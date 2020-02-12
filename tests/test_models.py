@@ -53,6 +53,23 @@ class TestCellComplex2D(unittest.TestCase):
         self.assertTrue(nx.is_isomorphic(G, H))
         self.assertEqual(12, len(cell_complex.vertices))
 
+    def test_multi_add(self):
+
+        cell_complex = models.CellComplex2D(1, 20, 10)
+
+        np.random.seed(12)
+
+        coefs = np.random.rand(40, 4)
+        coefs[:, :3] = coefs[:, :3] / np.linalg.norm(coefs[:, :3], axis=1)[:, None]
+        coefs[:, 3] = 18 * (coefs[:, 3] - 0.5)
+
+        planes = [models.CuttingPlane(c) for c in coefs]
+
+        for p in planes:
+            cell_complex.insert_partition(p)
+
+        print(nx.to_dict_of_lists(cell_complex.cell_graph()))
+
 
 if __name__ == '__main__':
     unittest.main()
