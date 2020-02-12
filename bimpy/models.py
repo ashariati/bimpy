@@ -1,4 +1,5 @@
 import numpy as np
+import networkx as nx
 import collections
 import itertools
 
@@ -34,6 +35,7 @@ class CellComplex2D(object):
 
         cell_init = Cell2D({e for e in self._edges})
         self._cells = {cell_init}
+
         self._edge_cells = {e: {cell_init} for e in self._edges}
 
         cp_right = CuttingPlane(np.array([1, 0, 0, -width / 2]))
@@ -123,12 +125,18 @@ class CellComplex2D(object):
                     c2.edges.add(e)
                     self._edge_cells.setdefault(e, set()).add(c2)
 
+                # TODO: Partition evidence as well
+
             # update books
             self._cells.discard(c)
             self._cells.add(c1)
             self._cells.add(c2)
-            self._edge_cells[new_edge] = {c1, c2}
             self._edges.add(new_edge)
+            self._edge_cells[new_edge] = {c1, c2}
+            self._edge_plane[new_edge] = plane
+
+    def delete_partition(self, plane):
+        pass
 
     def update_partitions(self, planes):
         pass
@@ -139,8 +147,27 @@ class CellComplex2D(object):
     def insert_evidence(self, evidence):
         pass
 
-    def adjacency(self):
-        pass
+    def cell_graph(self):
+        G = nx.Graph()
+        for e in self._edge_cells:
+            cells = self._edge_cells[e]
+            assert (len(cells) == 1 or len(cells) == 2), "{edge:cells} map corrupted"
+            if len(cells) == 2:
+                c1, c2 = cells
+                G.add_edge(c1, c2)
+        return G
+
+    @property
+    def vertices(self):
+        return self._vertices.copy()
+
+    @property
+    def edges(self):
+        return self._edges.copy()
+
+    @property
+    def cells(self):
+        return self._cells.copy()
 
 
 
