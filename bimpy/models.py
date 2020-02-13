@@ -3,6 +3,8 @@ import networkx as nx
 import collections
 import itertools
 
+import matplotlib.pyplot as plt
+
 
 class CuttingPlane(object):
 
@@ -141,6 +143,9 @@ class CellComplex2D(object):
         for (k, v) in self._edge_plane.items():
             plane_edge.setdefault(v, []).append(k)
 
+        if plane not in plane_edge:
+            return
+
         for e in plane_edge[plane]:
 
             i, j = e
@@ -203,6 +208,16 @@ class CellComplex2D(object):
             self._cells.discard(c2)
             self._cells.add(c)
             del self._edge_plane[e]
+            if i_incident[0] in self._edge_plane and i_incident[1] in self._edge_plane:
+                i_plane = self._edge_plane[i_incident[0]]
+                del self._edge_plane[i_incident[0]]
+                del self._edge_plane[i_incident[1]]
+                self._edge_plane[i_bridged] = i_plane
+            if j_incident[0] in self._edge_plane and j_incident[1] in self._edge_plane:
+                j_plane = self._edge_plane[j_incident[0]]
+                del self._edge_plane[j_incident[0]]
+                del self._edge_plane[j_incident[1]]
+                self._edge_plane[j_bridged] = j_plane
             del self._edge_cells[e]
 
         # remove discarded edges from {edge:cells}
@@ -228,6 +243,16 @@ class CellComplex2D(object):
                 c1, c2 = cells
                 G.add_edge(c1, c2)
         return G
+
+    def draw(self):
+
+        for u, v in self._edges:
+            vertices = np.array([self._vertices[u], self._vertices[v]])
+            plt.plot(vertices[:, 0], vertices[:, 1], 'bo-')
+
+        for i, u in enumerate(self._vertices):
+            plt.annotate(str(i), (u[0], u[1]))
+        plt.show()
 
     @property
     def vertices(self):
