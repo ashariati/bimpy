@@ -70,6 +70,25 @@ class TestCellComplex2D(unittest.TestCase):
 
         print(nx.to_dict_of_lists(cell_complex.cell_graph()))
 
+    def test_add3_remove1(self):
+
+        cell_complex = models.CellComplex2D(0, 20, 10)
+        cp1 = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -1]))
+        cp2 = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -2]))
+        cp3 = models.CuttingPlane(np.array([-0.7071, 0.7071, 0, -1]))
+
+        cell_complex.insert_partition(cp1)
+        cell_complex.insert_partition(cp2)
+        cell_complex.insert_partition(cp3)
+        cell_complex.delete_partition(cp3)
+
+        G = nx.to_networkx_graph({0: [1], 1: [0, 2], 2: [1]})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(12, len(cell_complex.vertices))
+        self.assertEqual(10, len(cell_complex.edges))
+
 
 if __name__ == '__main__':
     unittest.main()

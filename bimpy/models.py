@@ -15,7 +15,7 @@ class Cell2D(object):
 
     def __init__(self, edges=None):
         if edges is None:
-            edges = []
+            edges = set()
         assert isinstance(edges, set), "Expected type set, got %s instead" % type(edges)
         self.edges = edges
         self.evidence = []
@@ -136,7 +136,79 @@ class CellComplex2D(object):
             self._edge_plane[new_edge] = plane
 
     def delete_partition(self, plane):
-        pass
+
+        plane_edge = {}
+        for (k, v) in self._edge_plane.items():
+            plane_edge.setdefault(v, []).append(k)
+
+        for e in plane_edge[plane]:
+
+            i, j = e
+            c1, c2 = self._edge_cells[e]
+
+            # merged cell
+            c = Cell2D(c1.edges.union(c2.edges))
+
+            # remove all references to c1 and c2 within {edge:cells}
+            for f in c.edges:
+                self._edge_cells[f].discard(c1)
+                self._edge_cells[f].discard(c2)
+
+            # remove e from c
+            c.edges.discard(e)
+
+            # compute new edges which bypass vertices i and j now that e will be eliminated
+            i_incident = [None, None]
+            j_incident = [None, None]
+            for f in c.edges:
+                k, l = f
+                if i == l:
+                    i_incident[0] = f
+                elif i == k:
+                    i_incident[1] = f
+                elif j == l:
+                    j_incident[0] = f
+                elif j == k:
+                    j_incident[1] = f
+                else:
+                    continue
+            i_bridged = (i_incident[0][0], i_incident[1][1])
+            j_bridged = (j_incident[0][0], j_incident[1][1])
+
+            # remove edges incident to i and j
+            c.edges.discard(i_incident[0])
+            c.edges.discard(i_incident[1])
+            c.edges.discard(j_incident[0])
+            c.edges.discard(j_incident[1])
+
+            # add new edges that bypass i and j
+            c.edges.add(i_bridged)
+            c.edges.add(j_bridged)
+
+            # insert new edge references to c
+            for f in c.edges:
+                if f not in self._edge_cells:
+                    self._edge_cells[f] = set()
+                self._edge_cells[f].add(c)
+
+            # update books
+            self._edges.discard(e)
+            self._edges.discard(i_incident[0])
+            self._edges.discard(i_incident[1])
+            self._edges.discard(j_incident[0])
+            self._edges.discard(j_incident[1])
+            self._edges.add(i_bridged)
+            self._edges.add(j_bridged)
+            self._cells.discard(c1)
+            self._cells.discard(c2)
+            self._cells.add(c)
+            del self._edge_plane[e]
+            del self._edge_cells[e]
+
+        # remove discarded edges from {edge:cells}
+        for e in list(self._edge_cells.keys()):
+            if len(self._edge_cells[e]) == 0:
+                del self._edge_cells[e]
 
     def update_partitions(self, planes):
         pass
