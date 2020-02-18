@@ -55,7 +55,7 @@ class TestCellComplex2D(unittest.TestCase):
 
         cell_complex = models.CellComplex2D(1, 20, 10)
 
-        num_planes = 100
+        num_planes = 60
 
         np.random.seed(12)
         coefs = np.random.rand(num_planes, 4) - 0.5
@@ -175,6 +175,23 @@ class TestCellComplex2D(unittest.TestCase):
         self.assertTrue(nx.is_isomorphic(G, H))
 
         cell_complex.draw()
+
+class TestConvexPolygon(unittest.TestCase):
+
+    def test_simple(self):
+
+        vertices = [np.array([2, 1, 3]), np.array([-2, -1, 3]), np.array([-2, 1, 3]), np.array([2, -1, 3])]
+        edges = {(0, 2), (2, 1), (1, 3), (3, 0)}
+        cp = models.ConvexPolygon(vertices=vertices, edges=edges)
+
+        cutting_plane = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -1]))
+
+        cp1, cp2 = cp.partition(cutting_plane)
+
+        self.assertTrue(np.isclose(8, cp.area()))
+        self.assertTrue(np.isclose(cp.area(), cp1.area() + cp2.area()))
+
+
 
 
 if __name__ == '__main__':
