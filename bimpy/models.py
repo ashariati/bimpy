@@ -6,20 +6,21 @@ import itertools
 import matplotlib.pyplot as plt
 
 
+class CuttingPlane(object):
+
+    def __init__(self, coefficients):
+        assert isinstance(coefficients, np.ndarray), "Expected type ndarray, got %s instead" % type(coefficients)
+        assert (coefficients.size == 4), "Coefficients array must be of length 4"
+        self.coefficients = coefficients
+
+
 class ConvexPolygon(object):
 
-    def __init__(self, vertices=None, edges=None):
+    def __init__(self, vertices, edges):
 
-        if edges is None:
-            edges = set()
-
-        if vertices is None:
-            vertices = []
-            self._z_ref = 0
-        else:
-            self._z_ref = vertices[0][2]
-            assert (np.allclose(np.array(vertices)[:, 2], self._z_ref)), \
-                "Vertices must lie on a plane parallel to the x-y plane"
+        self._z_ref = vertices[0][2]
+        assert (np.allclose(np.array(vertices)[:, 2], self._z_ref)), \
+            "Vertices must lie on a plane parallel to the x-y plane"
 
         self.vertices = vertices
         self.edges = edges
@@ -133,6 +134,9 @@ class ConvexPolygon(object):
             plt.annotate(str(i), (u[0], u[1]))
         plt.show()
 
+    def totriangles(self):
+        pass
+
     @staticmethod
     def fromsubset(edges, vertices):
 
@@ -147,26 +151,39 @@ class ConvexPolygon(object):
         return ConvexPolygon(vertices=[vertices[i] for i in nodes], edges={(reindex[i], reindex[j]) for i, j in edges})
 
 
-class CuttingPlane(object):
+class SceneNode2D(ConvexPolygon):
 
-    def __init__(self, coefficients):
-        assert isinstance(coefficients, np.ndarray), "Expected type ndarray, got %s instead" % type(coefficients)
-        assert (coefficients.size == 4), "Coefficients array must be of length 4"
-        self.coefficients = coefficients
+    def __init__(self, vertices, edges, evidence=None):
+        super(SceneNode2D, self).__init__(vertices, edges)
+        if evidence is None:
+            evidence = []
+        self.evidence = evidence
+
+    def freespace_ratio(self):
+        return 0
 
 
 class CellComplex2D(object):
 
     class Cell(object):
 
-        def __init__(self, edges=None):
+        def __init__(self, edges=None, evidence=None):
+            if evidence is None:
+                evidence = []
             if edges is None:
                 edges = set()
             assert isinstance(edges, set), "Expected type set, got %s instead" % type(edges)
             self.edges = edges
-            self.evidence = []
+            self.evidence = evidence
 
-    def __init__(self, z_ref, width, length):
+        def to_scene_node(self, cell_complex):
+            cp = ConvexPolygon.fromsubset(self.edges, cell_complex.vertices)
+            return SceneNode2D(vertices=cp.vertices, edges=cp.edges, evidence=self.evidence)
+
+    def __init__(self, z_ref, width, length, evidence=None):
+
+        if evidence is None:
+            evidence = []
 
         self._z_ref = z_ref
         self._vertices = [np.array([width / 2, length / 2, z_ref]),
@@ -176,7 +193,7 @@ class CellComplex2D(object):
 
         self._edges = {(0, 1), (1, 2), (2, 3), (3, 0)}
 
-        cell_init = CellComplex2D.Cell({e for e in self._edges})
+        cell_init = CellComplex2D.Cell(edges={e for e in self._edges}, evidence=evidence)
         self._cells = {cell_init}
 
         self._edge_cells = {e: {cell_init} for e in self._edges}
@@ -239,10 +256,8 @@ class CellComplex2D(object):
             splits = [edge_splits[split_edges[0]], edge_splits[split_edges[1]]]
             new_edge = (splits[0][0][1], splits[1][0][1])
 
-            # remove split edges from the current cell
+            # complete edge set
             c_edges = c.edges.difference(set(split_edges))
-
-            # insert new sub-segments
             c_edges.add(splits[0][0])
             c_edges.add(splits[0][1])
             c_edges.add(splits[1][0])
@@ -268,7 +283,11 @@ class CellComplex2D(object):
                     c2.edges.add(e)
                     self._edge_cells.setdefault(e, set()).add(c2)
 
-                # TODO: Partition evidence as well
+            # partition evidence
+            for cp in c.evidence:
+                cp_pos, cp_neg = cp.partition(plane)
+                c1.evidence.append(cp_pos)
+                c2.evidence.append(cp_neg)
 
             # update books
             self._cells.discard(c)
@@ -278,121 +297,37 @@ class CellComplex2D(object):
             self._edge_cells[new_edge] = {c1, c2}
             self._edge_plane[new_edge] = plane
 
-    def delete_partition(self, plane):
-
-        plane_edge = {}
-        for (k, v) in self._edge_plane.items():
-            plane_edge.setdefault(v, []).append(k)
-
-        if plane not in plane_edge:
-            return
-
-        for e in plane_edge[plane]:
-
-            i, j = e
-            c1, c2 = self._edge_cells[e]
-
-            # merged cell
-            c = CellComplex2D.Cell(c1.edges.union(c2.edges))
-
-            # remove all references to c1 and c2 within {edge:cells}
-            for f in c.edges:
-                self._edge_cells[f].discard(c1)
-                self._edge_cells[f].discard(c2)
-
-            # remove e from c
-            c.edges.discard(e)
-
-            # compute new edges which bypass vertices i and j now that e will be eliminated
-            i_incident = [None, None]
-            j_incident = [None, None]
-            for f in c.edges:
-                k, l = f
-                if i == l:
-                    i_incident[0] = f
-                elif i == k:
-                    i_incident[1] = f
-                elif j == l:
-                    j_incident[0] = f
-                elif j == k:
-                    j_incident[1] = f
-                else:
-                    continue
-            i_bridged = (i_incident[0][0], i_incident[1][1])
-            j_bridged = (j_incident[0][0], j_incident[1][1])
-
-            # remove edges incident to i and j
-            c.edges.discard(i_incident[0])
-            c.edges.discard(i_incident[1])
-            c.edges.discard(j_incident[0])
-            c.edges.discard(j_incident[1])
-
-            # add new edges that bypass i and j
-            c.edges.add(i_bridged)
-            c.edges.add(j_bridged)
-
-            # insert new edge references to c
-            for f in c.edges:
-                if f not in self._edge_cells:
-                    self._edge_cells[f] = set()
-                self._edge_cells[f].add(c)
-
-            # update books
-            self._edges.discard(e)
-            self._edges.discard(i_incident[0])
-            self._edges.discard(i_incident[1])
-            self._edges.discard(j_incident[0])
-            self._edges.discard(j_incident[1])
-            self._edges.add(i_bridged)
-            self._edges.add(j_bridged)
-            self._cells.discard(c1)
-            self._cells.discard(c2)
-            self._cells.add(c)
-            del self._edge_plane[e]
-            if i_incident[0] in self._edge_plane and i_incident[1] in self._edge_plane:
-                i_plane = self._edge_plane[i_incident[0]]
-                del self._edge_plane[i_incident[0]]
-                del self._edge_plane[i_incident[1]]
-                self._edge_plane[i_bridged] = i_plane
-            if j_incident[0] in self._edge_plane and j_incident[1] in self._edge_plane:
-                j_plane = self._edge_plane[j_incident[0]]
-                del self._edge_plane[j_incident[0]]
-                del self._edge_plane[j_incident[1]]
-                self._edge_plane[j_bridged] = j_plane
-            del self._edge_cells[e]
-
-        # remove discarded edges from {edge:cells}
-        for e in list(self._edge_cells.keys()):
-            if len(self._edge_cells[e]) == 0:
-                del self._edge_cells[e]
-
-    def update_partitions(self, planes):
-        pass
-
-    def insert_boundary(self, boundary):
-        pass
-
-    def insert_evidence(self, evidence):
-        pass
-
     def cell_graph(self):
+
+        scene_nodes = {c: c.to_scene_node(self) for c in self._cells}
+
         G = nx.Graph()
         for e in self._edge_cells:
             cells = self._edge_cells[e]
             assert (len(cells) == 1 or len(cells) == 2), "{edge:cells} map corrupted"
             if len(cells) == 2:
                 c1, c2 = cells
-                G.add_edge(c1, c2)
+                G.add_edge(scene_nodes[c1], scene_nodes[c2])
         return G
 
     def draw(self):
 
-        for u, v in self._edges:
-            vertices = np.array([self._vertices[u], self._vertices[v]])
+        for i, j in self._edges:
+            vertices = np.array([self._vertices[i], self._vertices[j]])
             plt.plot(vertices[:, 0], vertices[:, 1], 'bo-')
 
         for i, u in enumerate(self._vertices):
             plt.annotate(str(i), (u[0], u[1]))
+
+        G = self.cell_graph()
+        for u, v in G.edges:
+
+            u_center = np.mean(np.array(u.vertices), axis=0)
+            v_center = np.mean(np.array(v.vertices), axis=0)
+            centers = np.array([u_center, v_center])
+
+            plt.plot(centers[:, 0], centers[:, 1], 'go-')
+
         plt.show()
 
     @property
