@@ -6,15 +6,61 @@ import itertools
 import matplotlib.pyplot as plt
 
 
-class CuttingPlane(object):
+class Plane(object):
 
     def __init__(self, coefficients):
         assert isinstance(coefficients, np.ndarray), "Expected type ndarray, got %s instead" % type(coefficients)
         assert (coefficients.size == 4), "Coefficients array must be of length 4"
-        self.coefficients = coefficients
+        n_length = np.linalg.norm(coefficients[:3])
+        self.coefficients = coefficients / n_length
+
+    def dot(self, v):
+        assert isinstance(v, np.ndarray), "Expected type ndarray, got %s instead" % type(v)
+        assert (len(v.shape) == 1 and v.shape[0] == 3) or (len(v.shape) > 1 and v.shape[1] == 3), "Vector(s) must be of length 3"
+        return np.dot(v, self.coefficients[:3]) + self.coefficients[3]
 
 
-class ConvexPolygon(object):
+class Polygon3D(object):
+
+    def __init__(self, vertices, edges, plane):
+
+        assert (len(vertices.shape) == 1 and vertices.shape[0] == 3) or \
+               (len(vertices.shape) > 1 and vertices.shape[1] == 3), "vertices must be of size nx3"
+        assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
+        assert np.allclose(plane.dot(vertices), 0), "All vertices must reside on plane"
+
+        self.vertices = vertices
+        self.edges = edges
+        self.plane = plane
+
+    def xy_interval(self, z_ref):
+
+        """
+        Projects the polygons vertices onto the line arising from the intersection of the Polygon's plane and a plane
+            residing at z_ref, and returns the resulting line segment
+
+        :param z_ref: the height of the plane intersecting the polygons plane
+        :return:
+        """
+
+        line = np.array([self.plane.coefficients[0],
+                         self.plane.coefficients[1],
+                         self.plane.coefficients[2] * z_ref - self.plane.coefficients[3]])
+
+        magnitude = -line[2]
+        p_0 = np.array([magnitude * line[0], magnitude * line[1], z_ref])
+        n_hat = np.array([line[1], -line[0], 0])
+
+        distances = np.dot((self.vertices - n_hat), n_hat)
+
+        interval = (np.array([[np.min(distances)], [np.max(distances)]]) * n_hat) + p_0
+        return interval
+
+    def centroid(self):
+        return np.mean(self.vertices, axis=0)
+
+
+class ConvexPolygon2D(object):
 
     def __init__(self, vertices, edges):
 
@@ -39,13 +85,15 @@ class ConvexPolygon(object):
 
     def partition(self, plane):
 
+        assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
+
         # skip z planes if they end up here
         if np.isclose(np.abs(plane.coefficients[2]), 1):
             return
 
         # determine which elements are intersected by the new cutting plane
         vertices = np.array(self.vertices)
-        side = np.sign(np.dot(vertices, plane.coefficients[:3]) + plane.coefficients[3])
+        side = np.sign(plane.dot(vertices))
         hit_edges = [(i, j) for (i, j) in self.edges if side[i] != side[j]]
 
         # no edges were hit
@@ -98,8 +146,8 @@ class ConvexPolygon(object):
             else:
                 neg_edges.add(e)
 
-        cp_pos = ConvexPolygon.fromsubset(pos_edges, self.vertices)
-        cp_neg = ConvexPolygon.fromsubset(neg_edges, self.vertices)
+        cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices)
+        cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices)
 
         return cp_pos, cp_neg
 
@@ -130,12 +178,8 @@ class ConvexPolygon(object):
             vertices = np.array([self.vertices[i], self.vertices[j]])
             plt.plot(vertices[:, 0], vertices[:, 1], 'bo-')
 
-        for i, u in enumerate(self.vertices):
-            plt.annotate(str(i), (u[0], u[1]))
-        plt.show()
-
-    def totriangles(self):
-        pass
+        # for i, u in enumerate(self.vertices):
+        #     plt.annotate(str(i), (u[0], u[1]))
 
     @staticmethod
     def fromsubset(edges, vertices):
@@ -148,10 +192,10 @@ class ConvexPolygon(object):
 
         reindex = {i: k for k, i in enumerate(nodes)}
 
-        return ConvexPolygon(vertices=[vertices[i] for i in nodes], edges={(reindex[i], reindex[j]) for i, j in edges})
+        return ConvexPolygon2D(vertices=[vertices[i] for i in nodes], edges={(reindex[i], reindex[j]) for i, j in edges})
 
 
-class SceneNode2D(ConvexPolygon):
+class SceneNode2D(ConvexPolygon2D):
 
     def __init__(self, vertices, edges, evidence=None):
         super(SceneNode2D, self).__init__(vertices, edges)
@@ -159,8 +203,9 @@ class SceneNode2D(ConvexPolygon):
             evidence = []
         self.evidence = evidence
 
-    def freespace_ratio(self):
-        return 0
+    def free_ratio(self):
+        # this should be union / area, but lets just use max for now
+        return max([p.area() for p in self.evidence]) / self.area()
 
 
 class CellComplex2D(object):
@@ -177,7 +222,7 @@ class CellComplex2D(object):
             self.evidence = evidence
 
         def to_scene_node(self, cell_complex):
-            cp = ConvexPolygon.fromsubset(self.edges, cell_complex.vertices)
+            cp = ConvexPolygon2D.fromsubset(self.edges, cell_complex.vertices)
             return SceneNode2D(vertices=cp.vertices, edges=cp.edges, evidence=self.evidence)
 
     def __init__(self, z_ref, width, length, evidence=None):
@@ -198,15 +243,15 @@ class CellComplex2D(object):
 
         self._edge_cells = {e: {cell_init} for e in self._edges}
 
-        cp_right = CuttingPlane(np.array([1, 0, 0, -width / 2]))
-        cp_left = CuttingPlane(np.array([1, 0, 0, width / 2]))
-        cp_top = CuttingPlane(np.array([0, 1, 0, -length / 2]))
-        cp_bottom = CuttingPlane(np.array([0, 1, 0, length / 2]))
+        cp_right = Plane(np.array([1, 0, 0, -width / 2]))
+        cp_left = Plane(np.array([1, 0, 0, width / 2]))
+        cp_top = Plane(np.array([0, 1, 0, -length / 2]))
+        cp_bottom = Plane(np.array([0, 1, 0, length / 2]))
         self._edge_plane = {(0, 1): cp_top, (1, 2): cp_left, (2, 3): cp_bottom, (3, 0): cp_right}
 
     def insert_partition(self, plane):
 
-        assert isinstance(plane, CuttingPlane), "Requires instance of CuttingPlane"
+        assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
 
         # skip z planes if they end up here
         if np.isclose(np.abs(plane.coefficients[2]), 1):
@@ -214,7 +259,7 @@ class CellComplex2D(object):
 
         # determine which elements are intersected by the new cutting plane
         vertices = np.array(self._vertices)
-        side = np.sign(np.dot(vertices, plane.coefficients[:3]) + plane.coefficients[3])
+        side = np.sign(plane.dot(vertices))
         hit_edges = [(i, j) for (i, j) in self._edges if side[i] != side[j]]
         hit_cells = set(itertools.chain(*[self._edge_cells[e] for e in hit_edges]))
 
@@ -312,14 +357,11 @@ class CellComplex2D(object):
 
     def draw(self):
 
-        for i, j in self._edges:
-            vertices = np.array([self._vertices[i], self._vertices[j]])
-            plt.plot(vertices[:, 0], vertices[:, 1], 'bo-')
-
-        for i, u in enumerate(self._vertices):
-            plt.annotate(str(i), (u[0], u[1]))
-
         G = self.cell_graph()
+
+        for node in G.nodes:
+            node.draw()
+
         for u, v in G.edges:
 
             u_center = np.mean(np.array(u.vertices), axis=0)
@@ -329,6 +371,54 @@ class CellComplex2D(object):
             plt.plot(centers[:, 0], centers[:, 1], 'go-')
 
         plt.show()
+
+    def insert_boundary(self, boundary, height_threshold=np.inf, coverage_threshold=0.3):
+        """
+        Severs cell adjacency connections contained in edge_cells based on whether or not an adjoining edge is covered
+            by the given boundary. This test is performed by projecting the 3D boundary polygon to the line intersecting
+            the reference plane and the plane on which the boundary resides, which yields a line segment colinear to
+            all edges in the cell complex which are induced by the same plane. If a significant overlap between the
+            edge and line segment exists, we remove the edge from edge_cells, which eliminates the notion of adjacency.
+
+        :param boundary: Polygon3D representing a boundary that divides areas of free space
+        :param height_threshold: boundary shapes whose centroid resides above height will be ignored
+        :param coverage_threshold: a number between [0, 1] denoting the ratio of coverage required to severe cell connections
+        :return:
+        """
+
+        assert isinstance(boundary, Polygon3D), "Expected type Polygon3D, got %s instead" % type(boundary)
+
+        boundary_height = boundary.centroid()[2]
+        if boundary_height > height_threshold or boundary_height < self._z_ref:
+            return
+
+        interval = boundary.xy_interval(self._z_ref)
+        x1 = interval[0]
+        x2 = interval[1]
+
+        plane_edge = collections.defaultdict(list)
+        for e, p in self._edge_plane.items():
+            plane_edge[p].append(e)
+
+        for e in plane_edge[boundary.plane]:
+            v1 = self.vertices[e[0]]
+            v2 = self.vertices[e[1]]
+            n_hat = v2 - v1
+
+            t1 = (x1 - v1) / n_hat
+            assert (np.allclose(t1, t1[0])), "intervals and edges not colinear"
+            t1 = t1[0]
+
+            t2 = (x2 - v1) / n_hat
+            assert (np.allclose(t2, t2[0])), "intervals and edges not colinear"
+            t2 = t2[0]
+
+            t1, t2 = (t2, t1) if t1 > t2 else (t1, t2)
+
+            # if overlap exceeds threshold, discard from edge_cells which tracks cell adjacency
+            r = min(t2 - max(t1, 0), 1)
+            if r > coverage_threshold:
+                del self._edge_cells[e]
 
     @property
     def vertices(self):

@@ -9,7 +9,7 @@ class TestCellComplex2D(unittest.TestCase):
     def test_add1(self):
 
         cell_complex = models.CellComplex2D(0, 20, 10)
-        cutting_plane = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -1]))
+        cutting_plane = models.Plane(np.array([0.7071, 0.7071, 0, -1]))
 
         cell_complex.insert_partition(cutting_plane)
 
@@ -22,8 +22,8 @@ class TestCellComplex2D(unittest.TestCase):
     def test_add2(self):
 
         cell_complex = models.CellComplex2D(0, 20, 10)
-        cp1 = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -1]))
-        cp2 = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -2]))
+        cp1 = models.Plane(np.array([0.7071, 0.7071, 0, -1]))
+        cp2 = models.Plane(np.array([0.7071, 0.7071, 0, -2]))
 
         cell_complex.insert_partition(cp1)
         cell_complex.insert_partition(cp2)
@@ -37,9 +37,9 @@ class TestCellComplex2D(unittest.TestCase):
     def test_add3(self):
 
         cell_complex = models.CellComplex2D(0, 20, 10)
-        cp1 = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -1]))
-        cp2 = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -2]))
-        cp3 = models.CuttingPlane(np.array([-0.7071, 0.7071, 0, -1]))
+        cp1 = models.Plane(np.array([0.7071, 0.7071, 0, -1]))
+        cp2 = models.Plane(np.array([0.7071, 0.7071, 0, -2]))
+        cp3 = models.Plane(np.array([-0.7071, 0.7071, 0, -1]))
 
         cell_complex.insert_partition(cp1)
         cell_complex.insert_partition(cp2)
@@ -66,7 +66,7 @@ class TestCellComplex2D(unittest.TestCase):
         coefs[:, :3] = coefs[:, :3] / np.linalg.norm(coefs[:, :3], axis=1)[:, None]
         coefs[:, 3] = 19 * coefs[:, 3]
 
-        planes = [models.CuttingPlane(c) for c in coefs]
+        planes = [models.Plane(c) for c in coefs]
         for p in planes:
             cell_complex.insert_partition(p)
 
@@ -89,7 +89,7 @@ class TestCellComplex2D(unittest.TestCase):
         coefs[:, :3] = coefs[:, :3] / np.linalg.norm(coefs[:, :3], axis=1)[:, None]
         coefs[:, 3] = 19 * coefs[:, 3]
 
-        planes = [models.CuttingPlane(c) for c in coefs]
+        planes = [models.Plane(c) for c in coefs]
 
         for p in planes:
             cell_complex.insert_partition(p)
@@ -105,7 +105,7 @@ class TestCellComplex2D(unittest.TestCase):
         coefs[:, :3] = coefs[:, :3] / np.linalg.norm(coefs[:, :3], axis=1)[:, None]
         coefs[:, 3] = 19 * coefs[:, 3]
 
-        planes = [models.CuttingPlane(c) for c in coefs]
+        planes = [models.Plane(c) for c in coefs]
         for p in planes:
             cell_complex.insert_partition(p)
 
@@ -124,9 +124,9 @@ class TestConvexPolygon(unittest.TestCase):
 
         vertices = [np.array([2, 1, 3]), np.array([-2, -1, 3]), np.array([-2, 1, 3]), np.array([2, -1, 3])]
         edges = {(0, 2), (2, 1), (1, 3), (3, 0)}
-        cp = models.ConvexPolygon(vertices=vertices, edges=edges)
+        cp = models.ConvexPolygon2D(vertices=vertices, edges=edges)
 
-        cutting_plane = models.CuttingPlane(np.array([0.7071, 0.7071, 0, -1]))
+        cutting_plane = models.Plane(np.array([0.7071, 0.7071, 0, -1]))
 
         cp1, cp2 = cp.partition(cutting_plane)
 
