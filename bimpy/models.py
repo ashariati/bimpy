@@ -16,8 +16,17 @@ class Plane(object):
 
     def dot(self, v):
         assert isinstance(v, np.ndarray), "Expected type ndarray, got %s instead" % type(v)
-        assert (len(v.shape) == 1 and v.shape[0] == 3) or (len(v.shape) > 1 and v.shape[1] == 3), "Vector(s) must be of length 3"
+        assert (len(v.shape) == 1 and v.shape[0] == 3) or (len(v.shape) > 1 and v.shape[1] == 3), \
+            "Vector(s) must be of length 3"
         return np.dot(v, self.coefficients[:3]) + self.coefficients[3]
+
+    @staticmethod
+    def from_axis_distance(axis, distance):
+        axis = axis / np.linalg.norm(axis)
+        coefficients = np.zeros(4)
+        coefficients[:3] = axis
+        coefficients[3] = -distance
+        return Plane(coefficients)
 
 
 class Polygon3D(object):
@@ -45,15 +54,15 @@ class Polygon3D(object):
 
         line = np.array([self.plane.coefficients[0],
                          self.plane.coefficients[1],
-                         self.plane.coefficients[2] * z_ref - self.plane.coefficients[3]])
+                         self.plane.coefficients[2] * z_ref + self.plane.coefficients[3]])
 
         magnitude = -line[2]
         p_0 = np.array([magnitude * line[0], magnitude * line[1], z_ref])
-        n_hat = np.array([line[1], -line[0], 0])
+        n_hat = np.array([-line[1], line[0], 0])
 
         distances = np.dot((self.vertices - n_hat), n_hat)
 
-        interval = (np.array([[np.min(distances)], [np.max(distances)]]) * n_hat) + p_0
+        interval = np.array([[np.min(distances)], [np.max(distances)]]) * n_hat + p_0
         return interval
 
     def centroid(self):
@@ -172,6 +181,13 @@ class ConvexPolygon2D(object):
         self.edges = set(edges)
         return self
 
+    def rigid(self, R, t):
+
+        vertices = np.array(self.vertices)[:, :2]
+        vertices = np.dot(R, vertices.T).T + t
+        self.vertices = [np.array([v[0], v[1], self._z_ref]) for v in vertices]
+
+
     def draw(self):
 
         for i, j in self.edges:
@@ -207,6 +223,15 @@ class SceneNode2D(ConvexPolygon2D):
         # this should be union / area, but lets just use max for now
         return max([p.area() for p in self.evidence]) / self.area()
 
+    def draw(self):
+
+        for i, j in self.edges:
+            vertices = np.array([self.vertices[i], self.vertices[j]])
+            plt.plot(vertices[:, 0], vertices[:, 1], 'go-')
+
+        # for i, u in enumerate(self.vertices):
+        #     plt.annotate(str(i), (u[0], u[1]))
+
 
 class CellComplex2D(object):
 
@@ -241,6 +266,9 @@ class CellComplex2D(object):
         cell_init = CellComplex2D.Cell(edges={e for e in self._edges}, evidence=evidence)
         self._cells = {cell_init}
 
+        self._planes = set()
+        self._boundaries = set()
+
         self._edge_cells = {e: {cell_init} for e in self._edges}
 
         cp_right = Plane(np.array([1, 0, 0, -width / 2]))
@@ -252,6 +280,9 @@ class CellComplex2D(object):
     def insert_partition(self, plane):
 
         assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
+
+        if plane in self._planes:
+            return
 
         # skip z planes if they end up here
         if np.isclose(np.abs(plane.coefficients[2]), 1):
@@ -342,11 +373,16 @@ class CellComplex2D(object):
             self._edge_cells[new_edge] = {c1, c2}
             self._edge_plane[new_edge] = plane
 
+        self._planes.add(plane)
+
     def cell_graph(self):
 
         scene_nodes = {c: c.to_scene_node(self) for c in self._cells}
 
         G = nx.Graph()
+        for c in self._cells:
+            G.add_node(scene_nodes[c])
+
         for e in self._edge_cells:
             cells = self._edge_cells[e]
             assert (len(cells) == 1 or len(cells) == 2), "{edge:cells} map corrupted"
@@ -361,6 +397,8 @@ class CellComplex2D(object):
 
         for node in G.nodes:
             node.draw()
+            for evidence in node.evidence:
+                evidence.draw()
 
         for u, v in G.edges:
 
@@ -368,8 +406,14 @@ class CellComplex2D(object):
             v_center = np.mean(np.array(v.vertices), axis=0)
             centers = np.array([u_center, v_center])
 
-            plt.plot(centers[:, 0], centers[:, 1], 'go-')
+            plt.plot(centers[:, 0], centers[:, 1], 'ko-')
 
+        for b in self._boundaries:
+            interval = b.xy_interval(self._z_ref)
+            plt.plot(interval[:, 0], interval[:, 1], 'ro-')
+
+
+        plt.gca().set_aspect('equal', adjustable='box')
         plt.show()
 
     def insert_boundary(self, boundary, height_threshold=np.inf, coverage_threshold=0.3):
@@ -377,8 +421,9 @@ class CellComplex2D(object):
         Severs cell adjacency connections contained in edge_cells based on whether or not an adjoining edge is covered
             by the given boundary. This test is performed by projecting the 3D boundary polygon to the line intersecting
             the reference plane and the plane on which the boundary resides, which yields a line segment colinear to
-            all edges in the cell complex which are induced by the same plane. If a significant overlap between the
-            edge and line segment exists, we remove the edge from edge_cells, which eliminates the notion of adjacency.
+            all edges in the cell complex which are induced by the same plane. If the edge overlaps the boundary by a
+            a significant amount (determined by coverage_threshold), we remove the edge from edge_cells,
+            which eliminates the notion of adjacency.
 
         :param boundary: Polygon3D representing a boundary that divides areas of free space
         :param height_threshold: boundary shapes whose centroid resides above height will be ignored
@@ -392,9 +437,12 @@ class CellComplex2D(object):
         if boundary_height > height_threshold or boundary_height < self._z_ref:
             return
 
+        self._boundaries.add(boundary)
+
         interval = boundary.xy_interval(self._z_ref)
         x1 = interval[0]
         x2 = interval[1]
+        n_hat = x2 - x1
 
         plane_edge = collections.defaultdict(list)
         for e, p in self._edge_plane.items():
@@ -403,14 +451,13 @@ class CellComplex2D(object):
         for e in plane_edge[boundary.plane]:
             v1 = self.vertices[e[0]]
             v2 = self.vertices[e[1]]
-            n_hat = v2 - v1
 
-            t1 = (x1 - v1) / n_hat
-            assert (np.allclose(t1, t1[0])), "intervals and edges not colinear"
+            t1 = (v1 - x1)[:2] / n_hat[:2]
+            assert (np.isclose(t1[0], t1[1])), "intervals and edges not colinear"
             t1 = t1[0]
 
-            t2 = (x2 - v1) / n_hat
-            assert (np.allclose(t2, t2[0])), "intervals and edges not colinear"
+            t2 = (v2 - x1)[:2] / n_hat[:2]
+            assert (np.isclose(t2[0], t2[1])), "intervals and edges not colinear"
             t2 = t2[0]
 
             t1, t2 = (t2, t1) if t1 > t2 else (t1, t2)

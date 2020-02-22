@@ -2,6 +2,9 @@ import unittest
 import numpy as np
 import networkx as nx
 import models
+import simulator
+
+import matplotlib.pyplot as plt
 
 
 class TestCellComplex2D(unittest.TestCase):
@@ -9,7 +12,7 @@ class TestCellComplex2D(unittest.TestCase):
     def test_add1(self):
 
         cell_complex = models.CellComplex2D(0, 20, 10)
-        cutting_plane = models.Plane(np.array([0.7071, 0.7071, 0, -1]))
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
 
         cell_complex.insert_partition(cutting_plane)
 
@@ -22,8 +25,8 @@ class TestCellComplex2D(unittest.TestCase):
     def test_add2(self):
 
         cell_complex = models.CellComplex2D(0, 20, 10)
-        cp1 = models.Plane(np.array([0.7071, 0.7071, 0, -1]))
-        cp2 = models.Plane(np.array([0.7071, 0.7071, 0, -2]))
+        cp1 = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
+        cp2 = models.Plane.from_axis_distance(np.array([1, 1, 0]), 2)
 
         cell_complex.insert_partition(cp1)
         cell_complex.insert_partition(cp2)
@@ -37,9 +40,9 @@ class TestCellComplex2D(unittest.TestCase):
     def test_add3(self):
 
         cell_complex = models.CellComplex2D(0, 20, 10)
-        cp1 = models.Plane(np.array([0.7071, 0.7071, 0, -1]))
-        cp2 = models.Plane(np.array([0.7071, 0.7071, 0, -2]))
-        cp3 = models.Plane(np.array([-0.7071, 0.7071, 0, -1]))
+        cp1 = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
+        cp2 = models.Plane.from_axis_distance(np.array([1, 1, 0]), 2)
+        cp3 = models.Plane.from_axis_distance(np.array([-1, 1, 0]), 1)
 
         cell_complex.insert_partition(cp1)
         cell_complex.insert_partition(cp2)
@@ -52,21 +55,13 @@ class TestCellComplex2D(unittest.TestCase):
         self.assertEqual(12, len(cell_complex.vertices))
         self.assertEqual(17, len(cell_complex.edges))
 
-        # cell_complex.draw()
-
     def test_add4_random(self):
 
         cell_complex = models.CellComplex2D(0, 10, 10)
 
-        num_planes = 4
-
         np.random.seed(3)
-        coefs = np.random.rand(num_planes, 4) - 0.5
-        coefs[:, 2] = 0
-        coefs[:, :3] = coefs[:, :3] / np.linalg.norm(coefs[:, :3], axis=1)[:, None]
-        coefs[:, 3] = 19 * coefs[:, 3]
 
-        planes = [models.Plane(c) for c in coefs]
+        planes = simulator.random_planes(num_planes=4, max_distance=9, c=0)
         for p in planes:
             cell_complex.insert_partition(p)
 
@@ -81,31 +76,19 @@ class TestCellComplex2D(unittest.TestCase):
 
         cell_complex = models.CellComplex2D(1, 20, 10)
 
-        num_planes = 60
-
         np.random.seed(12)
-        coefs = np.random.rand(num_planes, 4) - 0.5
-        coefs[:, 2] = 0
-        coefs[:, :3] = coefs[:, :3] / np.linalg.norm(coefs[:, :3], axis=1)[:, None]
-        coefs[:, 3] = 19 * coefs[:, 3]
 
-        planes = [models.Plane(c) for c in coefs]
-
+        planes = simulator.random_planes(num_planes=60, max_distance=9, c=0)
         for p in planes:
             cell_complex.insert_partition(p)
 
     def test_multi_add_small(self):
+
         cell_complex = models.CellComplex2D(0, 10, 10)
 
-        num_planes = 5
-
         np.random.seed(1)
-        coefs = np.random.rand(num_planes, 4) - 0.5
-        coefs[:, 2] = 0
-        coefs[:, :3] = coefs[:, :3] / np.linalg.norm(coefs[:, :3], axis=1)[:, None]
-        coefs[:, 3] = 19 * coefs[:, 3]
 
-        planes = [models.Plane(c) for c in coefs]
+        planes = simulator.random_planes(num_planes=5, max_distance=9, c=0)
         for p in planes:
             cell_complex.insert_partition(p)
 
@@ -116,6 +99,42 @@ class TestCellComplex2D(unittest.TestCase):
         self.assertEqual(16, len(cell_complex.vertices))
         self.assertEqual(23, len(cell_complex.edges))
 
+    def test_partition_with_evidence_simple(self):
+
+        evidence = [simulator.ellipse(5, 3, 4, -3,)]
+        cell_complex = models.CellComplex2D(-3, 20, 10, evidence=evidence)
+
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
+
+        cell_complex.insert_partition(cutting_plane)
+
+        G = nx.to_networkx_graph({0: [1], 1: [0]})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        for node in H.nodes:
+            self.assertTrue(len(node.evidence) == 1)
+
+        cell_complex.draw()
+
+    def test_partition_with_boundary(self):
+
+        cell_complex = models.CellComplex2D(0, 20, 10)
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
+        boundary = simulator.rectangle(cutting_plane, 2, 1, 4, 2)
+
+        cell_complex.insert_partition(cutting_plane)
+        cell_complex.insert_boundary(boundary)
+
+        G = nx.to_networkx_graph({0: [], 1: []})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        cell_complex.draw()
 
 
 class TestConvexPolygon(unittest.TestCase):
@@ -134,6 +153,16 @@ class TestConvexPolygon(unittest.TestCase):
         self.assertEqual(5, len(cp2.vertices))
         self.assertTrue(np.isclose(8, cp.area()))
         self.assertTrue(np.isclose(cp.area(), cp1.area() + cp2.area()))
+
+    def test_ellipsoid(self):
+
+        np.random.seed(1)
+
+        evidence = simulator.random_evidence(3, -1, 1, [-10, -5], [10, 5])
+        for e in evidence:
+            e.draw()
+        plt.gca().set_aspect('equal', adjustable='box')
+        plt.show()
 
 
 
