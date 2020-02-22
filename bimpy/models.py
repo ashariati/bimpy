@@ -74,9 +74,12 @@ class ConvexPolygon2D(object):
 
     def __init__(self, vertices, edges):
 
-        self._z_ref = vertices[0][2]
-        assert (np.allclose(np.array(vertices)[:, 2], self._z_ref)), \
-            "Vertices must lie on a plane parallel to the x-y plane"
+        if len(vertices) > 0:
+            self._z_ref = vertices[0][2]
+            assert (np.allclose(np.array(vertices)[:, 2], self._z_ref)), \
+                "Vertices must lie on a plane parallel to the x-y plane"
+        else:
+            self._z_ref = 0
 
         self.vertices = vertices
         self.edges = edges
@@ -216,13 +219,13 @@ class SceneNode2D(ConvexPolygon2D):
 
     def __init__(self, vertices, edges, evidence=None):
         super(SceneNode2D, self).__init__(vertices, edges)
-        if evidence is None:
-            evidence = []
-        self.evidence = evidence
-
-    def free_ratio(self):
-        # this should be union / area, but lets just use max for now
-        return max([p.area() for p in self.evidence]) / self.area()
+        if evidence is None or len(evidence) == 0:
+            self.evidence = []
+            self.free_ratio = 0
+        else:
+            self.evidence = evidence
+            # TODO: should be union.area instead of max(area)
+            self.free_ratio = max([p.area() for p in self.evidence]) / self.area()
 
     def draw(self):
 
@@ -275,6 +278,12 @@ class CellComplex2D(object):
         cp_bottom = Plane(np.array([0, 1, 0, length / 2]))
         self._edge_plane = {(0, 1): cp_top, (1, 2): cp_left, (2, 3): cp_bottom, (3, 0): cp_right}
 
+        self._plane_edge = collections.defaultdict(set)
+        self._plane_edge[cp_top].add((0, 1))
+        self._plane_edge[cp_left].add((1, 2))
+        self._plane_edge[cp_bottom].add((2, 3))
+        self._plane_edge[cp_right].add((3, 0))
+
         self._edge_coverage = {}
 
     def insert_partition(self, plane):
@@ -314,10 +323,13 @@ class CellComplex2D(object):
             self._edges.discard(e)
             self._edges.add(e1)
             self._edges.add(e2)
+            del self._edge_cells[e]
             del self._edge_plane[e]
             self._edge_plane[e1] = hit_plane
             self._edge_plane[e2] = hit_plane
-            del self._edge_cells[e]
+            self._plane_edge[hit_plane].discard(e)
+            self._plane_edge[hit_plane].add(e1)
+            self._plane_edge[hit_plane].add(e2)
 
         for c in hit_cells:
 
@@ -369,6 +381,7 @@ class CellComplex2D(object):
             self._edges.add(new_edge)
             self._edge_cells[new_edge] = {c1, c2}
             self._edge_plane[new_edge] = plane
+            self._plane_edge[plane].add(new_edge)
 
     def insert_boundary(self, boundary, height_threshold=np.inf):
 
@@ -382,12 +395,7 @@ class CellComplex2D(object):
         x1 = interval[0]
         x2 = interval[1]
 
-        # TODO: try not to rebuild this with each call
-        plane_edge = collections.defaultdict(list)
-        for e, p in self._edge_plane.items():
-            plane_edge[p].append(e)
-
-        for e in plane_edge[boundary.plane]:
+        for e in self._plane_edge[boundary.plane]:
             v1 = self.vertices[e[0]]
             v2 = self.vertices[e[1]]
             n_hat = v2 - v1
@@ -421,12 +429,10 @@ class CellComplex2D(object):
                 return
             t1, t2 = self._edge_coverage[e]
             n_hat = self.vertices[e[1]] - self.vertices[e[0]]
-            span = np.linalg.norm(min(t2, 1) * n_hat - max(t1, 0) * n_hat)
+            span = np.linalg.norm(t2 * n_hat - t1 * n_hat)
             coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat))
             if span > coverage_threshold or np.isclose(coverage_threshold, span):
                 return True
-
-        # TODO: use evidence criteria when building graph... or create new method
 
         G = nx.Graph()
 
@@ -494,7 +500,6 @@ class CellComplex2D(object):
                 n_hat = vertices[1] - vertices[0]
                 interval = np.array([t1 * n_hat + vertices[0], t2 * n_hat + vertices[0]])
                 plt.plot(interval[:, 0], interval[:, 1], 'ro-')
-
 
         plt.gca().set_aspect('equal', adjustable='box')
         plt.show()
