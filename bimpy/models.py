@@ -267,9 +267,6 @@ class CellComplex2D(object):
         cell_init = CellComplex2D.Cell(edges={e for e in self._edges}, evidence=evidence)
         self._cells = {cell_init}
 
-        self._planes = set()
-        self._boundaries = set()
-
         self._edge_cells = {e: {cell_init} for e in self._edges}
 
         cp_right = Plane(np.array([1, 0, 0, -width / 2]))
@@ -278,12 +275,11 @@ class CellComplex2D(object):
         cp_bottom = Plane(np.array([0, 1, 0, length / 2]))
         self._edge_plane = {(0, 1): cp_top, (1, 2): cp_left, (2, 3): cp_bottom, (3, 0): cp_right}
 
+        self._edge_coverage = {}
+
     def insert_partition(self, plane):
 
         assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
-
-        if plane in self._planes:
-            return
 
         # skip z planes if they end up here
         if np.isclose(np.abs(plane.coefficients[2]), 1):
@@ -374,65 +370,7 @@ class CellComplex2D(object):
             self._edge_cells[new_edge] = {c1, c2}
             self._edge_plane[new_edge] = plane
 
-        self._planes.add(plane)
-
-    def cell_graph(self):
-
-        # use evidence criteria when building graph... or create new method
-
-        scene_nodes = {c: c.to_scene_node(self) for c in self._cells}
-
-        G = nx.Graph()
-        for c in self._cells:
-            G.add_node(scene_nodes[c])
-
-        for e in self._edge_cells:
-            cells = self._edge_cells[e]
-            assert (len(cells) == 1 or len(cells) == 2), "{edge:cells} map corrupted"
-            if len(cells) == 2:
-                c1, c2 = cells
-                G.add_edge(scene_nodes[c1], scene_nodes[c2])
-        return G
-
-    def draw(self):
-
-        G = self.cell_graph()
-
-        for node in G.nodes:
-            node.draw()
-            for evidence in node.evidence:
-                evidence.draw()
-
-        for u, v in G.edges:
-
-            u_center = np.mean(np.array(u.vertices), axis=0)
-            v_center = np.mean(np.array(v.vertices), axis=0)
-            centers = np.array([u_center, v_center])
-
-            plt.plot(centers[:, 0], centers[:, 1], 'ko-')
-
-        for b in self._boundaries:
-            interval = b.xy_interval(self._z_ref)
-            plt.plot(interval[:, 0], interval[:, 1], 'ro-')
-
-
-        plt.gca().set_aspect('equal', adjustable='box')
-        plt.show()
-
-    def insert_boundary(self, boundary, height_threshold=np.inf, coverage_threshold=1):
-        """
-        Severs cell adjacency connections contained in edge_cells based on whether or not an adjoining edge is covered
-            by the given boundary. This test is performed by projecting the 3D boundary polygon to the line intersecting
-            the reference plane and the plane on which the boundary resides, which yields a line segment colinear to
-            all edges in the cell complex which are induced by the same plane. If the edge overlaps the boundary by a
-            a significant amount (determined by coverage_threshold), we remove the edge from edge_cells,
-            which eliminates the notion of adjacency.
-
-        :param boundary: Polygon3D representing a boundary that divides areas of free space
-        :param height_threshold: boundary shapes whose centroid resides above height will be ignored
-        :param coverage_threshold: a number between [0, 1] denoting the ratio of coverage required to severe cell connections
-        :return:
-        """
+    def insert_boundary(self, boundary, height_threshold=np.inf):
 
         assert isinstance(boundary, Polygon3D), "Expected type Polygon3D, got %s instead" % type(boundary)
 
@@ -440,12 +378,11 @@ class CellComplex2D(object):
         if boundary_height > height_threshold or boundary_height < self._z_ref:
             return
 
-        self._boundaries.add(boundary)
-
         interval = boundary.xy_interval(self._z_ref)
         x1 = interval[0]
         x2 = interval[1]
 
+        # TODO: try not to rebuild this with each call
         plane_edge = collections.defaultdict(list)
         for e, p in self._edge_plane.items():
             plane_edge[p].append(e)
@@ -465,13 +402,56 @@ class CellComplex2D(object):
 
             t1, t2 = (t2, t1) if t1 > t2 else (t1, t2)
 
-            # if span of the overlap equals or exceeds the threshold, then
-            #   discard from edge_cells which tracks cell adjacency
-            # if the length of the edge is less than the coverage threshold, use the edge length as the threshold
+            t1 = max(t1, 0)
+            t2 = min(t2, 1)
+
+            if e not in self._edge_coverage:
+                self._edge_coverage[e] = (t1, t2)
+            else:
+                self._edge_coverage[e][0] = min(t1, self._edge_coverage[e][0])
+                self._edge_coverage[e][1] = max(t2, self._edge_coverage[e][1])
+
+    def cell_graph(self, coverage_threshold=1):
+
+        # if span of the overlap equals or exceeds the threshold, then
+        #   discard from edge_cells which tracks cell adjacency
+        # if the length of the edge is less than the coverage threshold, use the edge length as the threshold
+        def is_covered(e, coverage_threshold):
+            if e not in self._edge_coverage:
+                return
+            t1, t2 = self._edge_coverage[e]
+            n_hat = self.vertices[e[1]] - self.vertices[e[0]]
             span = np.linalg.norm(min(t2, 1) * n_hat - max(t1, 0) * n_hat)
             coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat))
             if span > coverage_threshold or np.isclose(coverage_threshold, span):
-                del self._edge_cells[e]
+                return True
+
+        # TODO: use evidence criteria when building graph... or create new method
+
+        G = nx.Graph()
+
+        scene_nodes = {c: c.to_scene_node(self) for c in self._cells}
+        for c in self._cells:
+            G.add_node(scene_nodes[c])
+
+        for e in self._edge_cells:
+
+            cells = self._edge_cells[e]
+            assert (len(cells) == 1 or len(cells) == 2), "{edge:cells} map corrupted"
+
+            # skip border edges
+            if len(cells) == 1:
+                continue
+
+            # if a significant portion of a boundary covers a shared edge, then
+            #   the neighboring cells are no longer considered free-adjacent
+            if is_covered(e, coverage_threshold):
+                continue
+
+            c1, c2 = cells
+            G.add_edge(scene_nodes[c1], scene_nodes[c2])
+
+        return G
 
     @property
     def vertices(self):
@@ -484,6 +464,41 @@ class CellComplex2D(object):
     @property
     def cells(self):
         return self._cells.copy()
+
+    def draw(self, scene_graph=None):
+
+        # draw all cell edges first
+        for e in self._edges:
+            i, j = e
+            vertices = np.array([self.vertices[i], self.vertices[j]])
+            plt.plot(vertices[:, 0], vertices[:, 1], 'yo-')
+
+        if scene_graph is not None:
+
+            for scene in scene_graph.nodes:
+                scene.draw()
+                for evidence in scene.evidence:
+                    evidence.draw()
+
+            for u, v in scene_graph.edges:
+                u_center = np.mean(np.array(u.vertices), axis=0)
+                v_center = np.mean(np.array(v.vertices), axis=0)
+                centers = np.array([u_center, v_center])
+                plt.plot(centers[:, 0], centers[:, 1], 'ko-')
+
+        # overlay boundaries
+        for e in self._edges:
+            if e in self._edge_coverage:
+                vertices = np.array([self.vertices[e[0]], self.vertices[e[1]]])
+                t1, t2 = self._edge_coverage[e]
+                n_hat = vertices[1] - vertices[0]
+                interval = np.array([t1 * n_hat + vertices[0], t2 * n_hat + vertices[0]])
+                plt.plot(interval[:, 0], interval[:, 1], 'ro-')
+
+
+        plt.gca().set_aspect('equal', adjustable='box')
+        plt.show()
+
 
 
 
