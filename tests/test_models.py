@@ -119,16 +119,118 @@ class TestCellComplex2D(unittest.TestCase):
 
         cell_complex.draw()
 
-    def test_partition_with_boundary(self):
+    def test_partition_with_boundary1(self):
 
         cell_complex = models.CellComplex2D(0, 20, 10)
         cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
         boundary = simulator.rectangle(cutting_plane, 2, 1, 4, 2)
 
         cell_complex.insert_partition(cutting_plane)
-        cell_complex.insert_boundary(boundary)
+        cell_complex.insert_boundary(boundary, coverage_threshold=1)
 
         G = nx.to_networkx_graph({0: [], 1: []})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        cell_complex.draw()
+
+    def test_partition_with_boundary2(self):
+
+        cell_complex = models.CellComplex2D(0, 20, 10)
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
+        boundary = simulator.rectangle(cutting_plane, 2, 1, 4, 2)
+
+        cell_complex.insert_partition(cutting_plane)
+        cell_complex.insert_boundary(boundary, coverage_threshold=4.1)
+
+        G = nx.to_networkx_graph({0: [1], 1: [0]})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        cell_complex.draw()
+
+    def test_partition_with_boundary3(self):
+
+        cell_complex = models.CellComplex2D(0, 20, 10)
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, -0.5]), 1)
+        boundary = simulator.rectangle(cutting_plane, 2, 1, 4, 2)
+
+        cell_complex.insert_partition(cutting_plane)
+        cell_complex.insert_boundary(boundary, coverage_threshold=1)
+
+        G = nx.to_networkx_graph({0: [], 1: []})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        cell_complex.draw()
+
+    def test_partition_with_boundary4(self):
+
+        cell_complex = models.CellComplex2D(0, 20, 10)
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, -0.5]), 1)
+        boundary = simulator.rectangle(cutting_plane, 2, 1, 100, 2)
+
+        cell_complex.insert_partition(cutting_plane)
+        cell_complex.insert_boundary(boundary, coverage_threshold=15)
+
+        G = nx.to_networkx_graph({0: [], 1: []})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        cell_complex.draw()
+
+    def test_partition_with_boundary5(self):
+
+        cell_complex = models.CellComplex2D(2, 20, 10)
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, -0.5]), 1)
+        boundary = simulator.rectangle(cutting_plane, 7.5, 1, 4, 2)
+
+        cell_complex.insert_partition(cutting_plane)
+        cell_complex.insert_boundary(boundary, coverage_threshold=1)
+
+        G = nx.to_networkx_graph({0: [1], 1: [0]})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        cell_complex.draw()
+
+    def test_partition_with_boundary6(self):
+
+        cell_complex = models.CellComplex2D(-4, 20, 10)
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, -0.5]), 1)
+        boundary = simulator.rectangle(cutting_plane, 7.5, 1, 4, 2)
+
+        cell_complex.insert_partition(cutting_plane)
+        cell_complex.insert_boundary(boundary, height_threshold=2, coverage_threshold=1)
+
+        G = nx.to_networkx_graph({0: [], 1: []})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        cell_complex.draw()
+
+    def test_partition_with_boundary7(self):
+
+        cell_complex = models.CellComplex2D(-4, 20, 10)
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, -0.5]), 1)
+        boundary = simulator.rectangle(cutting_plane, 9.5, 1, 4, 2)
+
+        cell_complex.insert_partition(cutting_plane)
+        cell_complex.insert_boundary(boundary, height_threshold=2, coverage_threshold=1)
+
+        G = nx.to_networkx_graph({0: [1], 1: [0]})
         H = cell_complex.cell_graph()
 
         self.assertTrue(nx.is_isomorphic(G, H))

@@ -55,6 +55,7 @@ class Polygon3D(object):
         line = np.array([self.plane.coefficients[0],
                          self.plane.coefficients[1],
                          self.plane.coefficients[2] * z_ref + self.plane.coefficients[3]])
+        line = line / np.linalg.norm(line[:2])
 
         magnitude = -line[2]
         p_0 = np.array([magnitude * line[0], magnitude * line[1], z_ref])
@@ -377,6 +378,8 @@ class CellComplex2D(object):
 
     def cell_graph(self):
 
+        # use evidence criteria when building graph... or create new method
+
         scene_nodes = {c: c.to_scene_node(self) for c in self._cells}
 
         G = nx.Graph()
@@ -416,7 +419,7 @@ class CellComplex2D(object):
         plt.gca().set_aspect('equal', adjustable='box')
         plt.show()
 
-    def insert_boundary(self, boundary, height_threshold=np.inf, coverage_threshold=0.3):
+    def insert_boundary(self, boundary, height_threshold=np.inf, coverage_threshold=1):
         """
         Severs cell adjacency connections contained in edge_cells based on whether or not an adjoining edge is covered
             by the given boundary. This test is performed by projecting the 3D boundary polygon to the line intersecting
@@ -442,7 +445,6 @@ class CellComplex2D(object):
         interval = boundary.xy_interval(self._z_ref)
         x1 = interval[0]
         x2 = interval[1]
-        n_hat = x2 - x1
 
         plane_edge = collections.defaultdict(list)
         for e, p in self._edge_plane.items():
@@ -451,20 +453,24 @@ class CellComplex2D(object):
         for e in plane_edge[boundary.plane]:
             v1 = self.vertices[e[0]]
             v2 = self.vertices[e[1]]
+            n_hat = v2 - v1
 
-            t1 = (v1 - x1)[:2] / n_hat[:2]
+            t1 = (x1 - v1)[:2] / n_hat[:2]
             assert (np.isclose(t1[0], t1[1])), "intervals and edges not colinear"
             t1 = t1[0]
 
-            t2 = (v2 - x1)[:2] / n_hat[:2]
+            t2 = (x2 - v1)[:2] / n_hat[:2]
             assert (np.isclose(t2[0], t2[1])), "intervals and edges not colinear"
             t2 = t2[0]
 
             t1, t2 = (t2, t1) if t1 > t2 else (t1, t2)
 
-            # if overlap exceeds threshold, discard from edge_cells which tracks cell adjacency
-            r = min(t2 - max(t1, 0), 1)
-            if r > coverage_threshold:
+            # if span of the overlap equals or exceeds the threshold, then
+            #   discard from edge_cells which tracks cell adjacency
+            # if the length of the edge is less than the coverage threshold, use the edge length as the threshold
+            span = np.linalg.norm(min(t2, 1) * n_hat - max(t1, 0) * n_hat)
+            coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat))
+            if span > coverage_threshold or np.isclose(coverage_threshold, span):
                 del self._edge_cells[e]
 
     @property
