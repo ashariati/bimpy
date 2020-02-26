@@ -11,7 +11,14 @@ class FloorPlanSpeculator(object):
 
         assert isinstance(cell_complex, models.CellComplex2D), "Expected type CellComplex2D, got %s instead" % type(cell_complex)
 
-        self.G = cell_complex.cell_graph()
+        self.H = cell_complex.cell_graph()
+
+        def has_no_boundary(u, v):
+            boundary_interval = self.H.get_edge_data(u, v)['boundary_interval']
+            return True if boundary_interval is None else False
+
+        self.G = nx.subgraph_view(self.H, filter_edge=has_no_boundary)
+
         self.horizon = horizon
 
         # find arbitrary starting point with evidence and neighbors
@@ -49,5 +56,5 @@ class FloorPlanSpeculator(object):
                 else:
                     distance.append(d + 1)
 
-        return self.G.subgraph(discovered)
+        return self.H.subgraph(discovered)
 

@@ -513,7 +513,7 @@ class CellComplex2D(object):
         # if span of the overlap equals or exceeds the threshold, then
         #   discard from edge_cells which tracks cell adjacency
         # if the length of the edge is less than the coverage threshold, use the edge length as the threshold
-        def is_covered(e, coverage_threshold):
+        def edge_coverage(e, coverage_threshold):
             if e not in self._edge_coverage:
                 return
             t1, t2 = self._edge_coverage[e]
@@ -521,7 +521,10 @@ class CellComplex2D(object):
             span = np.linalg.norm(t2 * n_hat - t1 * n_hat)
             coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat) * 0.5)
             if span > coverage_threshold or np.isclose(coverage_threshold, span):
-                return True
+                interval = np.array([t1 * n_hat + self.vertices[e[0]], t2 * n_hat + self.vertices[e[0]]])
+                return interval
+            else:
+                return None
 
         G = nx.Graph()
 
@@ -540,12 +543,9 @@ class CellComplex2D(object):
 
             # if a significant portion of a boundary covers a shared edge, then
             #   the neighboring cells are no longer considered free-adjacent
-            # TODO: don't skip, just mark edge and store boundary
-            if is_covered(e, coverage_threshold):
-                continue
-
             c1, c2 = cells
-            G.add_edge(scene_nodes[c1], scene_nodes[c2])
+            interval = edge_coverage(e, coverage_threshold)
+            G.add_edge(scene_nodes[c1], scene_nodes[c2], boundary_interval=interval)
 
         return G
 
@@ -576,21 +576,15 @@ class CellComplex2D(object):
                 for evidence in scene.evidence:
                     evidence.draw()
 
-            for u, v in scene_graph.edges:
+            for u, v, data in scene_graph.edges.data():
                 u_center = np.mean(np.array(u.vertices), axis=0)
                 v_center = np.mean(np.array(v.vertices), axis=0)
                 centers = np.array([u_center, v_center])
                 plt.plot(centers[:, 0], centers[:, 1], 'ko-')
 
-        # overlay boundaries
-        # TODO: get this from edge data
-        for e in self._edges:
-            if e in self._edge_coverage:
-                vertices = np.array([self.vertices[e[0]], self.vertices[e[1]]])
-                t1, t2 = self._edge_coverage[e]
-                n_hat = vertices[1] - vertices[0]
-                interval = np.array([t1 * n_hat + vertices[0], t2 * n_hat + vertices[0]])
-                plt.plot(interval[:, 0], interval[:, 1], 'ro-')
+                boundary_interval = data['boundary_interval']
+                if boundary_interval is not None:
+                    plt.plot(boundary_interval[:, 0], boundary_interval[:, 1], 'ro-')
 
         plt.gca().set_aspect('equal', adjustable='box')
         plt.show()
