@@ -28,6 +28,13 @@ class Plane(object):
         coefficients[3] = -distance
         return Plane(coefficients)
 
+    @staticmethod
+    def intersection(plane1, plane2, plane3):
+
+        A = np.array([plane1.coefficients[:3], plane2.coefficients[:3], plane3.coefficients[:3]])
+        b = -np.array([plane1.coefficients[3], plane2.coefficients[3], plane3.coefficients[3]])
+        return np.linalg.solve(A, b)
+
 
 class Polygon3D(object):
 
@@ -61,13 +68,31 @@ class Polygon3D(object):
         p_0 = np.array([magnitude * line[0], magnitude * line[1], z_ref])
         n_hat = np.array([-line[1], line[0], 0])
 
-        distances = np.dot((self.vertices - n_hat), n_hat)
+        distances = np.dot((self.vertices - p_0), n_hat)
 
         interval = np.array([[np.min(distances)], [np.max(distances)]]) * n_hat + p_0
         return interval
 
     def centroid(self):
         return np.mean(self.vertices, axis=0)
+
+def _partition_edges(edges, condition):
+
+    pos_edges = set()
+    neg_edges = set()
+    for e in edges:
+
+        i, j = e
+        i_side = condition[i] if i < len(condition) else 0
+        j_side = condition[j] if j < len(condition) else 0
+        e_side = np.sign(i_side + j_side)
+
+        if e_side > 0:
+            pos_edges.add(e)
+        else:
+            neg_edges.add(e)
+
+    return pos_edges, neg_edges
 
 
 class ConvexPolygon2D(object):
@@ -90,11 +115,13 @@ class ConvexPolygon2D(object):
         x2 = self.vertices[e[1]]
 
         n_hat = x2 - x1
-        p_hat = np.array([n_hat[1], -n_hat[0], n_hat[2]])
+        p_hat = np.array([-n_hat[1], n_hat[0], n_hat[2]])
         d = np.dot(p_hat, x1)
 
-        plane = np.array([n_hat[1], -n_hat[0], n_hat[2], -d])
-        return plane
+        axis = np.array([-n_hat[1], n_hat[0], n_hat[2]])
+        distance = d
+
+        return Plane.from_axis_distance(axis, distance)
 
     def partition(self, plane):
 
@@ -107,62 +134,118 @@ class ConvexPolygon2D(object):
         # determine which elements are intersected by the new cutting plane
         vertices = np.array(self.vertices)
         side = np.sign(plane.dot(vertices))
-        hit_edges = [(i, j) for (i, j) in self.edges if side[i] != side[j]]
+        # hit_edges = [(i, j) for (i, j) in self.edges if side[i] != side[j]]
+        hit_vertices = np.where(np.isclose(side, 0))[0]
+        hit_edges = [(i, j) for (i, j) in self.edges if np.abs(side[i] - side[j]) == 2]
 
-        # no edges were hit
-        if len(hit_edges) == 0:
+        if len(hit_vertices) == 0 and len(hit_edges) == 0:
+
+            # no intersection
+            #
+
             if np.all(side == 1):
-                return self, []
+                return self, None
             else:
-                return [], self
+                return None, self
 
-        assert (len(hit_edges) == 2), "This shouldn't happen, vertices must form non-convex shape"
+        elif len(hit_vertices) == 1 and len(hit_edges) == 0:
 
-        splits = []
-        for e in hit_edges:
+            # tangent plane
+            #
+
+            if np.any(side == 1):
+                return self, None
+            else:
+                return None, self
+
+        elif len(hit_vertices) == 1 and len(hit_edges) == 1:
+
+            # one vertex and one edge hit
+            #
 
             # add new vertex
-            hit_plane = self._edge_to_plane(e)
-
-            A = np.array([plane.coefficients[:3], hit_plane[:3], [0, 0, 1]])
-            b = -np.array([plane.coefficients[3], hit_plane[3], -self._z_ref])
-            new_vertex = np.linalg.solve(A, b)
+            hit_plane = self._edge_to_plane(hit_edges[0])
+            new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
             vertex_id = len(self.vertices)
             self.vertices.append(new_vertex)
 
             # new edges
-            i, j = e
+            i, j = hit_edges[0]
             e1 = (i, vertex_id)
             e2 = (vertex_id, j)
-
-            # save to splits
-            splits.append((e1, e2))
+            e_div = (vertex_id, hit_vertices[0])
 
             # update books
-            self.edges.discard(e)
+            self.edges.discard(hit_edges[0])
             self.edges.add(e1)
             self.edges.add(e2)
 
-        # partition edges
-        new_edge = (splits[0][0][1], splits[1][0][1])
-        pos_edges = {new_edge}
-        neg_edges = {new_edge}
-        for e in self.edges:
+            # partition
+            pos_edges, neg_edges = _partition_edges(self.edges, side)
+            pos_edges.add(e_div)
+            neg_edges.add(e_div)
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices)
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices)
 
-            i, j = e
-            i_side = side[i] if i < len(side) else 0
-            j_side = side[j] if j < len(side) else 0
-            e_side = np.sign(i_side + j_side)
+            return cp_pos, cp_neg
 
-            if e_side > 0:
-                pos_edges.add(e)
-            else:
-                neg_edges.add(e)
+        elif len(hit_vertices) == 2 and len(hit_edges) == 0:
 
-        cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices)
-        cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices)
+            # two vertices hit
+            #
 
-        return cp_pos, cp_neg
+            # new dividing edge
+            e_div = (hit_vertices[0], hit_vertices[1])
+
+            # partition edges
+            pos_edges, neg_edges = _partition_edges(self.edges, side)
+            pos_edges.add(e_div)
+            neg_edges.add(e_div)
+
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices)
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices)
+
+            return cp_pos, cp_neg
+
+
+        elif len(hit_vertices) == 0 and len(hit_edges) == 2:
+
+            # two edges hit
+            #
+
+            splits = []
+            for e in hit_edges:
+
+                # add new vertex
+                hit_plane = self._edge_to_plane(e)
+                new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
+                vertex_id = len(self.vertices)
+                self.vertices.append(new_vertex)
+
+                # new edges from split
+                i, j = e
+                e1 = (i, vertex_id)
+                e2 = (vertex_id, j)
+                splits.append((e1, e2))
+
+                # update books
+                self.edges.discard(e)
+                self.edges.add(e1)
+                self.edges.add(e2)
+
+            # new dividing edge
+            e_div = (splits[0][0][1], splits[1][0][1])
+            pos_edges, neg_edges = _partition_edges(self.edges, side)
+            pos_edges.add(e_div)
+            neg_edges.add(e_div)
+
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices)
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices)
+
+            return cp_pos, cp_neg
+
+        else:
+            raise RuntimeError("Non-convex shape encountered")
 
     def area(self):
         self.sortccw()
@@ -190,7 +273,7 @@ class ConvexPolygon2D(object):
         vertices = np.array(self.vertices)[:, :2]
         vertices = np.dot(R, vertices.T).T + t
         self.vertices = [np.array([v[0], v[1], self._z_ref]) for v in vertices]
-
+        return self
 
     def draw(self):
 
@@ -305,9 +388,7 @@ class CellComplex2D(object):
 
             # add new vertex
             hit_plane = self._edge_plane[e]
-            A = np.array([plane.coefficients[:3], hit_plane.coefficients[:3], [0, 0, 1]])
-            b = -np.array([plane.coefficients[3], hit_plane.coefficients[3], -self._z_ref])
-            new_vertex = np.linalg.solve(A, b)
+            new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
             vertex_id = len(self._vertices)
             self._vertices.append(new_vertex)
 
@@ -371,8 +452,10 @@ class CellComplex2D(object):
             # partition evidence
             for cp in c.evidence:
                 cp_pos, cp_neg = cp.partition(plane)
-                c1.evidence.append(cp_pos)
-                c2.evidence.append(cp_neg)
+                if cp_pos is not None:
+                    c1.evidence.append(cp_pos)
+                if cp_neg is not None:
+                    c2.evidence.append(cp_neg)
 
             # update books
             self._cells.discard(c)
@@ -400,18 +483,24 @@ class CellComplex2D(object):
             v2 = self.vertices[e[1]]
             n_hat = v2 - v1
 
-            t1 = (x1 - v1)[:2] / n_hat[:2]
-            assert (np.isclose(t1[0], t1[1])), "intervals and edges not colinear"
+            t1 = (x1 - v1) / n_hat
+            t1 = t1[np.logical_not(np.isnan(t1))]
+            assert (np.allclose(t1, t1[0])), "intervals and edges not colinear"
             t1 = t1[0]
 
-            t2 = (x2 - v1)[:2] / n_hat[:2]
-            assert (np.isclose(t2[0], t2[1])), "intervals and edges not colinear"
+            t2 = (x2 - v1) / n_hat
+            t2 = t2[np.logical_not(np.isnan(t2))]
+            assert (np.allclose(t2, t2[0])), "intervals and edges not colinear"
             t2 = t2[0]
 
             t1, t2 = (t2, t1) if t1 > t2 else (t1, t2)
 
             t1 = max(t1, 0)
             t2 = min(t2, 1)
+
+            # no intersection
+            if t1 > t2:
+                continue
 
             if e not in self._edge_coverage:
                 self._edge_coverage[e] = (t1, t2)
@@ -430,7 +519,7 @@ class CellComplex2D(object):
             t1, t2 = self._edge_coverage[e]
             n_hat = self.vertices[e[1]] - self.vertices[e[0]]
             span = np.linalg.norm(t2 * n_hat - t1 * n_hat)
-            coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat))
+            coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat) * 0.5)
             if span > coverage_threshold or np.isclose(coverage_threshold, span):
                 return True
 
@@ -451,6 +540,7 @@ class CellComplex2D(object):
 
             # if a significant portion of a boundary covers a shared edge, then
             #   the neighboring cells are no longer considered free-adjacent
+            # TODO: don't skip, just mark edge and store boundary
             if is_covered(e, coverage_threshold):
                 continue
 
@@ -493,6 +583,7 @@ class CellComplex2D(object):
                 plt.plot(centers[:, 0], centers[:, 1], 'ko-')
 
         # overlay boundaries
+        # TODO: get this from edge data
         for e in self._edges:
             if e in self._edge_coverage:
                 vertices = np.array([self.vertices[e[0]], self.vertices[e[1]]])
