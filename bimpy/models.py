@@ -106,6 +106,8 @@ class ConvexPolygon2D(object):
         else:
             self._z_ref = 0
 
+        assert (len(vertices) == len(edges)), "Invalid vertex or edge set"
+
         self.vertices = vertices
         self.edges = edges
 
@@ -115,13 +117,12 @@ class ConvexPolygon2D(object):
         x2 = self.vertices[e[1]]
 
         n_hat = x2 - x1
-        p_hat = np.array([-n_hat[1], n_hat[0], n_hat[2]])
-        d = np.dot(p_hat, x1)
-
         axis = np.array([-n_hat[1], n_hat[0], n_hat[2]])
-        distance = d
+        axis = axis / np.linalg.norm(axis)
 
-        return Plane.from_axis_distance(axis, distance)
+        d = np.dot(axis, x1)
+
+        return Plane(np.array([axis[0], axis[1], axis[2], -d]))
 
     def partition(self, plane):
 
@@ -248,25 +249,31 @@ class ConvexPolygon2D(object):
             raise RuntimeError("Non-convex shape encountered")
 
     def area(self):
-        self.sortccw()
-        vertices = np.array(self.vertices)
-        x = vertices[:, 0]
-        y = vertices[:, 1]
-        return 0.5 * (np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
 
-    def sortccw(self):
-
-        vertices = np.array(self.vertices)
+        valid_ids = self.valid_vertices()
+        vertices = np.array([self.vertices[i] for i in valid_ids])
         center = np.mean(vertices, axis=0)
         vertices = vertices - center
 
         angles, order = zip(*sorted([(np.arctan2(v[1], v[0]), i) for i, v in enumerate(vertices)], key=lambda x: x[0]))
+        order = np.array(order)
 
-        self.vertices = [self.vertices[j] for j in order]
-        edges = list(zip(range(len(self.vertices)), range(1, len(self.vertices))))
-        edges.append((len(self.vertices)-1, 0))
-        self.edges = set(edges)
-        return self
+        vertices = vertices[order, :]
+        x = vertices[:, 0]
+        y = vertices[:, 1]
+
+        a = 0.5 * (np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+
+        return a
+
+    def valid_vertices(self):
+
+        vertex_ids = []
+        for e in self.edges:
+            vertex_ids.append(e[0])
+            vertex_ids.append(e[1])
+        vertex_ids = list(set(vertex_ids))
+        return vertex_ids
 
     def rigid(self, R, t):
 

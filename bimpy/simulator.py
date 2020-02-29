@@ -30,23 +30,63 @@ def rectangle(plane, x, y, w, h):
 
     return models.Polygon3D(vertices, edges, plane)
 
-
 def ellipse(lambda1, lambda2, resolution, z_ref=0):
 
-    vertices = [[lambda1, 0], [-lambda1, 0], [0, lambda2], [0, -lambda2]]
-    for x in np.linspace(0, lambda1, resolution + 2)[1:-1]:
-        y = (lambda2 / lambda1) * np.sqrt(lambda1 ** 2 - x ** 2)
-        vertices.append([x, y])
-        vertices.append([-x, y])
-        vertices.append([-x, -y])
-        vertices.append([x, -y])
-    vertices = np.array(vertices)
+    A = list(reversed([[x, 2*lambda2] for x in np.linspace(-lambda1, lambda1, resolution + 2)[1:-1]]))
+    B = [[lambda1, y] for y in np.linspace(0, 2*lambda2, resolution + 2)[1:-1]]
 
-    vertices3 = np.zeros((vertices.shape[0], 3))
-    vertices3[:, :2] = vertices
-    vertices3[:, 2] = z_ref
+    v1 = np.array([lambda1, 0, z_ref])
+    v2 = np.array([-lambda1, 0, z_ref])
+    p1 = np.array([0, lambda2, z_ref])
+    p2 = np.array([0, -lambda2, z_ref])
 
-    return models.ConvexPolygon2D(vertices3, []).sortccw()
+    # quadrant 1
+    vertices_q1 = [v1]
+    for i in range(resolution):
+
+        px_top11 = np.linalg.det(np.array([v1[:2], A[i]]))
+        px_top12 = np.linalg.det(np.array([[v1[0], 1], [A[i][0], 1]]))
+        px_top21 = np.linalg.det(np.array([v2[:2], B[i]]))
+        px_top22 = np.linalg.det(np.array([[v2[0], 1], [B[i][0], 1]]))
+
+        py_top11 = np.linalg.det(np.array([v1[:2], A[i]]))
+        py_top12 = np.linalg.det(np.array([[v1[1], 1], [A[i][1], 1]]))
+        py_top21 = np.linalg.det(np.array([v2[:2], B[i]]))
+        py_top22 = np.linalg.det(np.array([[v2[1], 1], [B[i][1], 1]]))
+
+        bot11 = np.linalg.det(np.array([[v1[0], 1], [A[i][0], 1]]))
+        bot12 = np.linalg.det(np.array([[v1[1], 1], [A[i][1], 1]]))
+        bot21 = np.linalg.det(np.array([[v2[0], 1], [B[i][0], 1]]))
+        bot22 = np.linalg.det(np.array([[v2[1], 1], [B[i][1], 1]]))
+        denominator = np.linalg.det(np.array([[bot11, bot12], [bot21, bot22]]))
+
+        px = np.linalg.det(np.array([[px_top11, px_top12], [px_top21, px_top22]])) / denominator
+        py = np.linalg.det(np.array([[py_top11, py_top12], [py_top21, py_top22]])) / denominator
+
+        vertices_q1.append(np.array([px, py, z_ref]))
+
+    # quadrant 2
+    vertices_q2 = [p1]
+    for v1 in reversed(vertices_q1[1:]):
+        vertices_q2.append(np.array([-v1[0], v1[1], z_ref]))
+
+    # quadrant 3
+    vertices_q3 = [v2]
+    for v1 in vertices_q1[1:]:
+        vertices_q3.append(np.array([-v1[0], -v1[1], z_ref]))
+
+    # quadrant 4
+    vertices_q4 = [p2]
+    for v1 in reversed(vertices_q1[1:]):
+        vertices_q4.append(np.array([v1[0], -v1[1], z_ref]))
+
+    # vertices and edges
+    vertices = vertices_q1 + vertices_q2 + vertices_q3 + vertices_q4
+    edges = list(zip(range(len(vertices)), range(1, len(vertices))))
+    edges.append((len(vertices) - 1, 0))
+    edges = set(edges)
+
+    return models.ConvexPolygon2D(vertices, edges)
 
 
 def random_evidence(n, z_ref, max_radius, min_range, max_range, resolution=4):

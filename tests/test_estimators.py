@@ -62,7 +62,7 @@ class TestFloorPlan(unittest.TestCase):
         for b in boundaries:
             cell_complex.insert_boundary(b)
 
-        speculator = estimators.FloorPlanSpeculator(cell_complex, horizon=2)
+        speculator = estimators.FloorPlanSpeculator(cell_complex, horizon=1)
         scene_graph = speculator.floorplan()
         # scene_graph = cell_complex.cell_graph()
 

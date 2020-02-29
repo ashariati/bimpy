@@ -114,8 +114,11 @@ class TestCellComplex2D(unittest.TestCase):
         self.assertTrue(nx.is_isomorphic(G, H))
         self.assertEqual(6, len(cell_complex.vertices))
 
+        node_evidence_vertices = 0
         for node in H.nodes:
             self.assertTrue(len(node.evidence) == 1)
+            node_evidence_vertices += len(node.evidence[0].vertices)
+        self.assertEqual(len(evidence[0].vertices), node_evidence_vertices-2)
 
         cell_complex.draw(scene_graph=H)
 
