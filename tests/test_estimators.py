@@ -51,7 +51,7 @@ class TestFloorPlan(unittest.TestCase):
             diff = tr_corner - bl_corner
 
             center = np.mean(np.array([tr_corner, bl_corner]), axis=0)
-            ellipse = simulator.ellipse(diff[0] / 2, diff[1] / 2, 3).rigid(np.eye(2), center)
+            ellipse = simulator.ellipse(float(diff[0]) / 2, float(diff[1]) / 2, 3).rigid(np.eye(2), center)
             evidence.append(ellipse)
 
         # construct

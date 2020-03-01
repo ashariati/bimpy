@@ -3,6 +3,7 @@ import numpy as np
 import itertools
 
 import models
+import utilities
 
 
 class FloorPlanSpeculator(object):
@@ -13,11 +14,7 @@ class FloorPlanSpeculator(object):
 
         self.H = cell_complex.cell_graph()
 
-        def has_no_boundary(u, v):
-            boundary_interval = self.H.get_edge_data(u, v)['boundary_interval']
-            return True if boundary_interval is None else False
-
-        self.G = nx.subgraph_view(self.H, filter_edge=has_no_boundary)
+        self.G = utilities.filter_boundary_edges(self.H)
 
         self.horizon = horizon
 

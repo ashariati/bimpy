@@ -3,6 +3,7 @@ import numpy as np
 import networkx as nx
 import models
 import simulator
+import utilities
 
 import matplotlib.pyplot as plt
 
@@ -134,11 +135,7 @@ class TestCellComplex2D(unittest.TestCase):
         G = nx.to_networkx_graph({0: [], 1: []})
         H = cell_complex.cell_graph(coverage_threshold=1)
 
-        def has_no_boundary(u, v):
-            boundary_interval = H.get_edge_data(u, v)['boundary_interval']
-            return True if boundary_interval is None else False
-
-        self.assertTrue(nx.is_isomorphic(G, nx.subgraph_view(H, filter_edge=has_no_boundary)))
+        self.assertTrue(nx.is_isomorphic(G, utilities.filter_boundary_edges(H)))
         self.assertEqual(6, len(cell_complex.vertices))
 
         cell_complex.draw(scene_graph=H)
@@ -155,11 +152,7 @@ class TestCellComplex2D(unittest.TestCase):
         G = nx.to_networkx_graph({0: [1], 1: [0]})
         H = cell_complex.cell_graph(coverage_threshold=4.1)
 
-        def has_no_boundary(u, v):
-            boundary_interval = H.get_edge_data(u, v)['boundary_interval']
-            return True if boundary_interval is None else False
-
-        self.assertTrue(nx.is_isomorphic(G, nx.subgraph_view(H, filter_edge=has_no_boundary)))
+        self.assertTrue(nx.is_isomorphic(G, utilities.filter_boundary_edges(H)))
         self.assertEqual(6, len(cell_complex.vertices))
 
         cell_complex.draw(scene_graph=H)
@@ -176,11 +169,7 @@ class TestCellComplex2D(unittest.TestCase):
         G = nx.to_networkx_graph({0: [], 1: []})
         H = cell_complex.cell_graph(coverage_threshold=1)
 
-        def has_no_boundary(u, v):
-            boundary_interval = H.get_edge_data(u, v)['boundary_interval']
-            return True if boundary_interval is None else False
-
-        self.assertTrue(nx.is_isomorphic(G, nx.subgraph_view(H, filter_edge=has_no_boundary)))
+        self.assertTrue(nx.is_isomorphic(G, utilities.filter_boundary_edges(H)))
         self.assertEqual(6, len(cell_complex.vertices))
 
         cell_complex.draw(scene_graph=H)
@@ -197,11 +186,7 @@ class TestCellComplex2D(unittest.TestCase):
         G = nx.to_networkx_graph({0: [], 1: []})
         H = cell_complex.cell_graph(coverage_threshold=15)
 
-        def has_no_boundary(u, v):
-            boundary_interval = H.get_edge_data(u, v)['boundary_interval']
-            return True if boundary_interval is None else False
-
-        self.assertTrue(nx.is_isomorphic(G, nx.subgraph_view(H, filter_edge=has_no_boundary)))
+        self.assertTrue(nx.is_isomorphic(G, utilities.filter_boundary_edges(H)))
         self.assertEqual(6, len(cell_complex.vertices))
 
         cell_complex.draw(scene_graph=H)
@@ -218,11 +203,7 @@ class TestCellComplex2D(unittest.TestCase):
         G = nx.to_networkx_graph({0: [1], 1: [0]})
         H = cell_complex.cell_graph(coverage_threshold=1)
 
-        def has_no_boundary(u, v):
-            boundary_interval = H.get_edge_data(u, v)['boundary_interval']
-            return True if boundary_interval is None else False
-
-        self.assertTrue(nx.is_isomorphic(G, nx.subgraph_view(H, filter_edge=has_no_boundary)))
+        self.assertTrue(nx.is_isomorphic(G, utilities.filter_boundary_edges(H)))
         self.assertEqual(6, len(cell_complex.vertices))
 
         cell_complex.draw(scene_graph=H)
@@ -239,11 +220,7 @@ class TestCellComplex2D(unittest.TestCase):
         G = nx.to_networkx_graph({0: [], 1: []})
         H = cell_complex.cell_graph(coverage_threshold=1)
 
-        def has_no_boundary(u, v):
-            boundary_interval = H.get_edge_data(u, v)['boundary_interval']
-            return True if boundary_interval is None else False
-
-        self.assertTrue(nx.is_isomorphic(G, nx.subgraph_view(H, filter_edge=has_no_boundary)))
+        self.assertTrue(nx.is_isomorphic(G, utilities.filter_boundary_edges(H)))
         self.assertEqual(6, len(cell_complex.vertices))
 
         cell_complex.draw(scene_graph=H)
@@ -260,11 +237,7 @@ class TestCellComplex2D(unittest.TestCase):
         G = nx.to_networkx_graph({0: [1], 1: [0]})
         H = cell_complex.cell_graph(coverage_threshold=1)
 
-        def has_no_boundary(u, v):
-            boundary_interval = H.get_edge_data(u, v)['boundary_interval']
-            return True if boundary_interval is None else False
-
-        self.assertTrue(nx.is_isomorphic(G, nx.subgraph_view(H, filter_edge=has_no_boundary)))
+        self.assertTrue(nx.is_isomorphic(G, utilities.filter_boundary_edges(H)))
         self.assertEqual(6, len(cell_complex.vertices))
 
         cell_complex.draw(scene_graph=H)
