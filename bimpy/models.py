@@ -2,6 +2,7 @@ import numpy as np
 import networkx as nx
 import collections
 import itertools
+import copy
 
 import matplotlib.pyplot as plt
 
@@ -19,6 +20,13 @@ class Plane(object):
         assert (len(v.shape) == 1 and v.shape[0] == 3) or (len(v.shape) > 1 and v.shape[1] == 3), \
             "Vector(s) must be of length 3"
         return np.dot(v, self.coefficients[:3]) + self.coefficients[3]
+
+    def project(self, v):
+        assert isinstance(v, np.ndarray), "Expected type ndarray, got %s instead" % type(v)
+        assert (len(v.shape) == 1 and v.shape[0] == 3) or (len(v.shape) > 1 and v.shape[1] == 3), \
+            "Vector(s) must be of length 3"
+        dist = self.dot(v)
+        return v - (dist * self.coefficients[:3])
 
     @staticmethod
     def from_axis_distance(axis, distance):
@@ -75,6 +83,7 @@ class Polygon3D(object):
 
     def centroid(self):
         return np.mean(self.vertices, axis=0)
+
 
 def _partition_edges(edges, condition):
 
@@ -486,8 +495,8 @@ class CellComplex2D(object):
         x2 = interval[1]
 
         for e in self._plane_edge[boundary.plane]:
-            v1 = self.vertices[e[0]]
-            v2 = self.vertices[e[1]]
+            v1 = self._vertices[e[0]]
+            v2 = self._vertices[e[1]]
             n_hat = v2 - v1
 
             t1 = (x1 - v1) / n_hat
@@ -558,15 +567,15 @@ class CellComplex2D(object):
 
     @property
     def vertices(self):
-        return self._vertices.copy()
+        return copy.copy(self._vertices)
 
     @property
     def edges(self):
-        return self._edges.copy()
+        return copy.copy(self._edges)
 
     @property
     def cells(self):
-        return self._cells.copy()
+        return copy.copy(self._cells)
 
     def draw(self, scene_graph=None):
 
