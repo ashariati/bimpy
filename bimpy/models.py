@@ -48,6 +48,7 @@ class Polygon3D(object):
 
     def __init__(self, vertices, edges, plane):
 
+        assert isinstance(vertices, np.ndarray), "Expected type ndarray, got %s instead" % type(plane)
         assert (len(vertices.shape) == 1 and vertices.shape[0] == 3) or \
                (len(vertices.shape) > 1 and vertices.shape[1] == 3), "vertices must be of size nx3"
         assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
@@ -108,8 +109,10 @@ class ConvexPolygon2D(object):
 
     def __init__(self, vertices, edges):
 
+        assert isinstance(vertices, np.ndarray), "Expected type ndarray for vertices, got %s instead" % type(vertices)
+
         if len(vertices) > 0:
-            self._z_ref = vertices[0][2]
+            self._z_ref = vertices[0, 2]
             assert (np.allclose(np.array(vertices)[:, 2], self._z_ref)), \
                 "Vertices must lie on a plane parallel to the x-y plane"
         else:
@@ -142,9 +145,7 @@ class ConvexPolygon2D(object):
             return
 
         # determine which elements are intersected by the new cutting plane
-        vertices = np.array(self.vertices)
-        side = np.sign(plane.dot(vertices))
-        # hit_edges = [(i, j) for (i, j) in self.edges if side[i] != side[j]]
+        side = np.sign(plane.dot(self.vertices))
         hit_vertices = np.where(np.isclose(side, 0))[0]
         hit_edges = [(i, j) for (i, j) in self.edges if np.abs(side[i] - side[j]) == 2]
 
@@ -177,7 +178,7 @@ class ConvexPolygon2D(object):
             hit_plane = self._edge_to_plane(hit_edges[0])
             new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
             vertex_id = len(self.vertices)
-            self.vertices.append(new_vertex)
+            self.vertices = np.vstack((self.vertices, new_vertex))
 
             # new edges
             i, j = hit_edges[0]
@@ -230,7 +231,7 @@ class ConvexPolygon2D(object):
                 hit_plane = self._edge_to_plane(e)
                 new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
                 vertex_id = len(self.vertices)
-                self.vertices.append(new_vertex)
+                self.vertices = np.vstack((self.vertices, new_vertex))
 
                 # new edges from split
                 i, j = e
@@ -260,7 +261,7 @@ class ConvexPolygon2D(object):
     def area(self):
 
         valid_ids = self.valid_vertices()
-        vertices = np.array([self.vertices[i] for i in valid_ids])
+        vertices = self.vertices[valid_ids]
         center = np.mean(vertices, axis=0)
         vertices = vertices - center
 
@@ -286,9 +287,7 @@ class ConvexPolygon2D(object):
 
     def rigid(self, R, t):
 
-        vertices = np.array(self.vertices)[:, :2]
-        vertices = np.dot(R, vertices.T).T + t
-        self.vertices = [np.array([v[0], v[1], self._z_ref]) for v in vertices]
+        self.vertices[:, :2] = np.dot(R, self.vertices[:, :2].T).T + t
         return self
 
     def draw(self):
@@ -311,7 +310,7 @@ class ConvexPolygon2D(object):
 
         reindex = {i: k for k, i in enumerate(nodes)}
 
-        return ConvexPolygon2D(vertices=[vertices[i] for i in nodes], edges={(reindex[i], reindex[j]) for i, j in edges})
+        return ConvexPolygon2D(vertices=np.array([vertices[i] for i in nodes]), edges={(reindex[i], reindex[j]) for i, j in edges})
 
 
 class SceneNode2D(ConvexPolygon2D):

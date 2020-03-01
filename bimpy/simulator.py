@@ -81,7 +81,7 @@ def ellipse(lambda1, lambda2, resolution, z_ref=0):
         vertices_q4.append(np.array([v1[0], -v1[1], z_ref]))
 
     # vertices and edges
-    vertices = vertices_q1 + vertices_q2 + vertices_q3 + vertices_q4
+    vertices = np.array(vertices_q1 + vertices_q2 + vertices_q3 + vertices_q4)
     edges = list(zip(range(len(vertices)), range(1, len(vertices))))
     edges.append((len(vertices) - 1, 0))
     edges = set(edges)
