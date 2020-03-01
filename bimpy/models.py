@@ -519,7 +519,7 @@ class CellComplex2D(object):
                 continue
 
             if e not in self._edge_coverage:
-                self._edge_coverage[e] = (t1, t2)
+                self._edge_coverage[e] = [t1, t2]
             else:
                 self._edge_coverage[e][0] = min(t1, self._edge_coverage[e][0])
                 self._edge_coverage[e][1] = max(t2, self._edge_coverage[e][1])
