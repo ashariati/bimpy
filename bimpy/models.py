@@ -2,6 +2,7 @@ import numpy as np
 import networkx as nx
 import collections
 import itertools
+from itertools import chain
 import copy
 
 import matplotlib.pyplot as plt
@@ -39,8 +40,8 @@ class Plane(object):
     @staticmethod
     def intersection(plane1, plane2, plane3):
 
-        A = np.array([plane1.coefficients[:3], plane2.coefficients[:3], plane3.coefficients[:3]])
-        b = -np.array([plane1.coefficients[3], plane2.coefficients[3], plane3.coefficients[3]])
+        A = np.concatenate([plane1.coefficients[:3], plane2.coefficients[:3], plane3.coefficients[:3]]).reshape(3, 3)
+        b = np.array([-plane1.coefficients[3], -plane2.coefficients[3], -plane3.coefficients[3]])
         return np.linalg.solve(A, b)
 
 
@@ -113,8 +114,6 @@ class ConvexPolygon2D(object):
 
         if len(vertices) > 0:
             self._z_ref = vertices[0, 2]
-            assert (np.allclose(np.array(vertices)[:, 2], self._z_ref)), \
-                "Vertices must lie on a plane parallel to the x-y plane"
         else:
             self._z_ref = 0
 
@@ -140,13 +139,9 @@ class ConvexPolygon2D(object):
 
         assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
 
-        # skip z planes if they end up here
-        if np.isclose(np.abs(plane.coefficients[2]), 1):
-            return
-
         # determine which elements are intersected by the new cutting plane
         side = np.sign(plane.dot(self.vertices))
-        hit_vertices = np.where(np.isclose(side, 0))[0]
+        hit_vertices = np.where(side == 0)[0]
         hit_edges = [(i, j) for (i, j) in self.edges if np.abs(side[i] - side[j]) == 2]
 
         if len(hit_vertices) == 0 and len(hit_edges) == 0:
@@ -177,8 +172,8 @@ class ConvexPolygon2D(object):
             # add new vertex
             hit_plane = self._edge_to_plane(hit_edges[0])
             new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
-            vertex_id = len(self.vertices)
-            self.vertices = np.vstack((self.vertices, new_vertex))
+            vertex_id = self.vertices.shape[0]
+            self.vertices = np.append(self.vertices, new_vertex[None, :], axis=0)
 
             # new edges
             i, j = hit_edges[0]
@@ -230,8 +225,8 @@ class ConvexPolygon2D(object):
                 # add new vertex
                 hit_plane = self._edge_to_plane(e)
                 new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
-                vertex_id = len(self.vertices)
-                self.vertices = np.vstack((self.vertices, new_vertex))
+                vertex_id = self.vertices.shape[0]
+                self.vertices = np.append(self.vertices, new_vertex[None, :], axis=0)
 
                 # new edges from split
                 i, j = e
@@ -261,7 +256,7 @@ class ConvexPolygon2D(object):
     def area(self):
 
         valid_ids = self.valid_vertices()
-        vertices = self.vertices[valid_ids]
+        vertices = self.vertices[valid_ids, :]
         center = np.mean(vertices, axis=0)
         vertices = vertices - center
 
@@ -272,18 +267,20 @@ class ConvexPolygon2D(object):
         x = vertices[:, 0]
         y = vertices[:, 1]
 
-        a = 0.5 * (np.dot(x, np.roll(y, -1)) - np.dot(y, np.roll(x, -1)))
+        y_left = np.zeros_like(y)
+        y_left[:-1] = y[1:]
+        y_left[-1] = y[0]
+
+        x_left = np.zeros_like(x)
+        x_left[:-1] = x[1:]
+        x_left[-1] = x[0]
+
+        a = 0.5 * (np.dot(x, y_left) - np.dot(y, x_left))
 
         return a
 
     def valid_vertices(self):
-
-        vertex_ids = []
-        for e in self.edges:
-            vertex_ids.append(e[0])
-            vertex_ids.append(e[1])
-        vertex_ids = list(set(vertex_ids))
-        return vertex_ids
+        return list(set(chain.from_iterable(self.edges)))
 
     def rigid(self, R, t):
 
@@ -302,15 +299,10 @@ class ConvexPolygon2D(object):
     @staticmethod
     def fromsubset(edges, vertices):
 
-        nodes = set()
-        for e in edges:
-            nodes.add(e[0])
-            nodes.add(e[1])
-        nodes = list(nodes)
+        vertex_ids = list(set(chain.from_iterable(edges)))
+        reindex = {i: k for k, i in enumerate(vertex_ids)}
 
-        reindex = {i: k for k, i in enumerate(nodes)}
-
-        return ConvexPolygon2D(vertices=np.array([vertices[i] for i in nodes]), edges={(reindex[i], reindex[j]) for i, j in edges})
+        return ConvexPolygon2D(vertices=vertices[vertex_ids, :], edges={(reindex[i], reindex[j]) for i, j in edges})
 
 
 class SceneNode2D(ConvexPolygon2D):
@@ -323,7 +315,9 @@ class SceneNode2D(ConvexPolygon2D):
         else:
             self.evidence = evidence
             # TODO: should be union.area instead of max(area)
-            self.free_ratio = max([p.area() for p in self.evidence]) / self.area()
+            # NOTE: This is way to slow
+            # self.free_ratio = max([p.area() for p in self.evidence]) / self.area()
+            self.free_ratio = len(self.evidence)
 
     def draw(self):
 
@@ -358,10 +352,10 @@ class CellComplex2D(object):
             evidence = []
 
         self._z_ref = z_ref
-        self._vertices = [np.array([width / 2, length / 2, z_ref]),
-                          np.array([-width / 2, length / 2, z_ref]),
-                          np.array([-width / 2, -length / 2, z_ref]),
-                          np.array([width / 2, -length / 2, z_ref])]
+        self._vertices = np.array([[width / 2, length / 2, z_ref],
+                                   [-width / 2, length / 2, z_ref],
+                                   [-width / 2, -length / 2, z_ref],
+                                   [width / 2, -length / 2, z_ref]])
 
         self._edges = {(0, 1), (1, 2), (2, 3), (3, 0)}
 
@@ -388,13 +382,8 @@ class CellComplex2D(object):
 
         assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
 
-        # skip z planes if they end up here
-        if np.isclose(np.abs(plane.coefficients[2]), 1):
-            return
-
         # determine which elements are intersected by the new cutting plane
-        vertices = np.array(self._vertices)
-        side = np.sign(plane.dot(vertices))
+        side = np.sign(plane.dot(self._vertices))
         hit_edges = [(i, j) for (i, j) in self._edges if side[i] != side[j]]
         hit_cells = set(itertools.chain(*[self._edge_cells[e] for e in hit_edges]))
 
@@ -404,8 +393,8 @@ class CellComplex2D(object):
             # add new vertex
             hit_plane = self._edge_plane[e]
             new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
-            vertex_id = len(self._vertices)
-            self._vertices.append(new_vertex)
+            vertex_id = self._vertices.shape[0]
+            self._vertices = np.append(self._vertices, new_vertex[None, :], axis=0)
 
             # new edges
             i, j = e
