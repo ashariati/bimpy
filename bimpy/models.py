@@ -312,17 +312,20 @@ class ConvexPolygon2D(object):
     @staticmethod
     def fromsubset(edges, vertices, edge_plane=None):
 
-        vertex_ids = list(set(chain.from_iterable(edges)))
-        reindex = {i: k for k, i in enumerate(vertex_ids)}
+        present_nodes = list(set(chain.from_iterable(edges)))
+        reindex = {i: k for k, i in enumerate(present_nodes)}
+
+        sub_vertices = vertices[present_nodes, :]
+        sub_edges = {(reindex[i], reindex[j]) for i, j in edges}
 
         if edge_plane is not None:
-            edge_plane_ = {e: edge_plane[e] for e in edges}
+            sub_edge_plane = {(reindex[i], reindex[j]): edge_plane[(i, j)] for i, j in edges}
         else:
-            edge_plane_ = {}
+            sub_edge_plane = {}
 
-        return ConvexPolygon2D(vertices=vertices[vertex_ids, :],
-                               edges={(reindex[i], reindex[j]) for i, j in edges},
-                               edge_plane=edge_plane_)
+        return ConvexPolygon2D(vertices=sub_vertices,
+                               edges=sub_edges,
+                               edge_plane=sub_edge_plane)
 
 
 class SceneNode2D(ConvexPolygon2D):
