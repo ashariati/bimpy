@@ -102,7 +102,7 @@ class TestCellComplex2D(unittest.TestCase):
 
     def test_partition_with_evidence_simple(self):
 
-        evidence = [simulator.ellipse(5, 3, 4, -3,)]
+        evidence = [simulator.ellipse(5, 3, 4, -3)]
         cell_complex = models.CellComplex2D(-3, 20, 10, evidence=evidence)
 
         cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
@@ -115,11 +115,34 @@ class TestCellComplex2D(unittest.TestCase):
         self.assertTrue(nx.is_isomorphic(G, H))
         self.assertEqual(6, len(cell_complex.vertices))
 
-        node_evidence_vertices = 0
+        node_evidence_edges = 0
         for node in H.nodes:
             self.assertTrue(len(node.evidence) == 1)
-            node_evidence_vertices += len(node.evidence[0].vertices)
-        self.assertEqual(len(evidence[0].vertices), node_evidence_vertices-2)
+            node_evidence_edges += len(node.evidence[0].edges)
+        self.assertEqual(len(evidence[0].edges), node_evidence_edges - 4)
+
+        cell_complex.draw(scene_graph=H)
+
+    def test_partition_with_evidence_simple2(self):
+
+        evidence = [simulator.ellipse(5, 3, 4, -3).rigid(np.eye(2), np.array([1, 0]))]
+        cell_complex = models.CellComplex2D(-3, 20, 10, evidence=evidence)
+
+        cutting_plane = models.Plane.from_axis_distance(np.array([1, 1, 0]), 1)
+
+        cell_complex.insert_partition(cutting_plane)
+
+        G = nx.to_networkx_graph({0: [1], 1: [0]})
+        H = cell_complex.cell_graph()
+
+        self.assertTrue(nx.is_isomorphic(G, H))
+        self.assertEqual(6, len(cell_complex.vertices))
+
+        node_evidence_edges = 0
+        for node in H.nodes:
+            self.assertTrue(len(node.evidence) == 1)
+            node_evidence_edges += len(node.evidence[0].edges)
+        self.assertEqual(len(evidence[0].edges), node_evidence_edges - 4)
 
         cell_complex.draw(scene_graph=H)
 

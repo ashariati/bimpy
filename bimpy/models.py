@@ -108,7 +108,7 @@ def _partition_edges(edges, condition):
 
 class ConvexPolygon2D(object):
 
-    def __init__(self, vertices, edges):
+    def __init__(self, vertices, edges, edge_plane=None):
 
         assert isinstance(vertices, np.ndarray), "Expected type ndarray for vertices, got %s instead" % type(vertices)
 
@@ -121,6 +121,10 @@ class ConvexPolygon2D(object):
 
         self.vertices = vertices
         self.edges = edges
+
+        if edge_plane is None:
+            edge_plane = {e: self._edge_to_plane(e) for e in self.edges}
+        self._edge_plane = edge_plane
 
     def _edge_to_plane(self, e):
 
@@ -170,7 +174,7 @@ class ConvexPolygon2D(object):
             #
 
             # add new vertex
-            hit_plane = self._edge_to_plane(hit_edges[0])
+            hit_plane = self._edge_plane[hit_edges[0]]
             new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
             vertex_id = self.vertices.shape[0]
             self.vertices = np.append(self.vertices, new_vertex[None, :], axis=0)
@@ -185,13 +189,16 @@ class ConvexPolygon2D(object):
             self.edges.discard(hit_edges[0])
             self.edges.add(e1)
             self.edges.add(e2)
+            self._edge_plane[e1] = hit_plane
+            self._edge_plane[e2] = hit_plane
+            self._edge_plane[e_div] = plane
 
             # partition
             pos_edges, neg_edges = _partition_edges(self.edges, side)
             pos_edges.add(e_div)
             neg_edges.add(e_div)
-            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices)
-            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices)
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)
 
             return cp_pos, cp_neg
 
@@ -207,9 +214,10 @@ class ConvexPolygon2D(object):
             pos_edges, neg_edges = _partition_edges(self.edges, side)
             pos_edges.add(e_div)
             neg_edges.add(e_div)
+            self._edge_plane[e_div] = plane
 
-            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices)
-            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices)
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)
 
             return cp_pos, cp_neg
 
@@ -223,7 +231,7 @@ class ConvexPolygon2D(object):
             for e in hit_edges:
 
                 # add new vertex
-                hit_plane = self._edge_to_plane(e)
+                hit_plane = self._edge_plane[e]
                 new_vertex = Plane.intersection(plane, hit_plane, Plane(np.array([0, 0, 1, -self._z_ref])))
                 vertex_id = self.vertices.shape[0]
                 self.vertices = np.append(self.vertices, new_vertex[None, :], axis=0)
@@ -238,15 +246,19 @@ class ConvexPolygon2D(object):
                 self.edges.discard(e)
                 self.edges.add(e1)
                 self.edges.add(e2)
+                self._edge_plane[e1] = hit_plane
+                self._edge_plane[e2] = hit_plane
 
             # new dividing edge
             e_div = (splits[0][0][1], splits[1][0][1])
+
             pos_edges, neg_edges = _partition_edges(self.edges, side)
             pos_edges.add(e_div)
             neg_edges.add(e_div)
+            self._edge_plane[e_div] = plane
 
-            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices)
-            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices)
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)
 
             return cp_pos, cp_neg
 
@@ -283,8 +295,9 @@ class ConvexPolygon2D(object):
         return list(set(chain.from_iterable(self.edges)))
 
     def rigid(self, R, t):
-
         self.vertices[:, :2] = np.dot(R, self.vertices[:, :2].T).T + t
+        for e in self._edge_plane:
+            self._edge_plane[e] = self._edge_to_plane(e)
         return self
 
     def draw(self):
@@ -297,12 +310,19 @@ class ConvexPolygon2D(object):
         #     plt.annotate(str(i), (u[0], u[1]))
 
     @staticmethod
-    def fromsubset(edges, vertices):
+    def fromsubset(edges, vertices, edge_plane=None):
 
         vertex_ids = list(set(chain.from_iterable(edges)))
         reindex = {i: k for k, i in enumerate(vertex_ids)}
 
-        return ConvexPolygon2D(vertices=vertices[vertex_ids, :], edges={(reindex[i], reindex[j]) for i, j in edges})
+        if edge_plane is not None:
+            edge_plane_ = {e: edge_plane[e] for e in edges}
+        else:
+            edge_plane_ = {}
+
+        return ConvexPolygon2D(vertices=vertices[vertex_ids, :],
+                               edges={(reindex[i], reindex[j]) for i, j in edges},
+                               edge_plane=edge_plane_)
 
 
 class SceneNode2D(ConvexPolygon2D):
@@ -340,10 +360,10 @@ class CellComplex2D(object):
                 edges = set()
             assert isinstance(edges, set), "Expected type set, got %s instead" % type(edges)
             self.edges = edges
-            self.evidence = evidence
+            self.evidence = copy.deepcopy(evidence)
 
         def to_scene_node(self, cell_complex):
-            cp = ConvexPolygon2D.fromsubset(self.edges, cell_complex.vertices)
+            cp = ConvexPolygon2D.fromsubset(self.edges, cell_complex.vertices, cell_complex._edge_plane)
             return SceneNode2D(vertices=cp.vertices, edges=cp.edges, evidence=self.evidence)
 
     def __init__(self, z_ref, width, length, evidence=None):
