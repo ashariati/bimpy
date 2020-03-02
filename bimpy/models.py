@@ -363,7 +363,7 @@ class CellComplex2D(object):
                 edges = set()
             assert isinstance(edges, set), "Expected type set, got %s instead" % type(edges)
             self.edges = edges
-            self.evidence = copy.deepcopy(evidence)
+            self.evidence = evidence
 
         def to_scene_node(self, cell_complex):
             cp = ConvexPolygon2D.fromsubset(self.edges, cell_complex.vertices, cell_complex._edge_plane)
@@ -373,6 +373,7 @@ class CellComplex2D(object):
 
         if evidence is None:
             evidence = []
+        _evidence = copy.deepcopy(evidence)
 
         self._z_ref = z_ref
         self._vertices = np.array([[width / 2, length / 2, z_ref],
@@ -382,7 +383,7 @@ class CellComplex2D(object):
 
         self._edges = {(0, 1), (1, 2), (2, 3), (3, 0)}
 
-        cell_init = CellComplex2D.Cell(edges={e for e in self._edges}, evidence=evidence)
+        cell_init = CellComplex2D.Cell(edges={e for e in self._edges}, evidence=_evidence)
         self._cells = {cell_init}
 
         self._edge_cells = {e: {cell_init} for e in self._edges}
