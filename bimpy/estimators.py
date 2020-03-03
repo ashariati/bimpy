@@ -8,13 +8,13 @@ import utilities
 
 class FloorPlanSpeculator(object):
 
-    def __init__(self, cell_complex, horizon=0, min_ratio=0.0):
+    def __init__(self, cell_complex, horizon=0, min_ratio=0.0, coverage_threshold=1.):
 
         assert isinstance(cell_complex, models.CellComplex2D), "Expected type CellComplex2D, got %s instead" % type(cell_complex)
 
         self.horizon = horizon
         self.min_ratio = min_ratio
-        self.H = cell_complex.cell_graph()
+        self.H = cell_complex.cell_graph(coverage_threshold=coverage_threshold)
         self.G = utilities.filter_boundary_edges(self.H)
 
     def floorplan(self):

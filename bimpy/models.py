@@ -536,7 +536,7 @@ class CellComplex2D(object):
                 self._edge_coverage[e][0] = min(t1, self._edge_coverage[e][0])
                 self._edge_coverage[e][1] = max(t2, self._edge_coverage[e][1])
 
-    def cell_graph(self, coverage_threshold=1):
+    def cell_graph(self, coverage_threshold=1.):
 
         # if span of the overlap equals or exceeds the threshold, then
         #   discard from edge_cells which tracks cell adjacency
