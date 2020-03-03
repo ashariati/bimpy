@@ -549,7 +549,8 @@ class CellComplex2D(object):
             span = np.linalg.norm(t2 * n_hat - t1 * n_hat)
             coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat) * 0.5)
             if span > coverage_threshold or np.isclose(coverage_threshold, span):
-                interval = [t1 * n_hat + self.vertices[e[0]], t2 * n_hat + self.vertices[e[0]]]
+                # interval = [t1 * n_hat + self.vertices[e[0]], t2 * n_hat + self.vertices[e[0]]]
+                interval = [self.vertices[e[0]], self.vertices[e[1]]]
                 return interval
             else:
                 return None
