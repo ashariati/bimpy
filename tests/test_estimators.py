@@ -43,7 +43,9 @@ class TestFloorPlan(unittest.TestCase):
                           ((5, 4), (4, 2)),
                           ((4, 4), (3, 3)),
                           ((3, 4), (2, 3)),
-                          ((2, 4), (1, 3))]
+                          ((2, 4), (1, 3)),
+                          ((3, 1), (2, 0))]
+
         evidence = []
         for ev in evidence_index:
             tr_corner = np.array([x_offsets[ev[0][0]], y_offsets[ev[0][1]]])

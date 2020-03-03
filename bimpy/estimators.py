@@ -12,23 +12,27 @@ class FloorPlanSpeculator(object):
 
         assert isinstance(cell_complex, models.CellComplex2D), "Expected type CellComplex2D, got %s instead" % type(cell_complex)
 
-        self.H = cell_complex.cell_graph()
-
-        self.G = utilities.filter_boundary_edges(self.H)
-
         self.horizon = horizon
-
-        # find arbitrary starting point with evidence and neighbors
-        self.source = None
-        for u in self.G.nodes:
-            if u.free_ratio > 0 and len(list(self.G.neighbors(u))) > 0:
-                self.source = u
-                break
+        self.H = cell_complex.cell_graph()
+        self.G = utilities.filter_boundary_edges(self.H)
 
     def floorplan(self):
 
-        discovered = {self.source}
-        unexplored = list(self.G.neighbors(self.source))
+        remaining = {u for u in self.G.nodes if u.free_ratio > 0}
+
+        floorplan_nodes = set()
+        while len(remaining) > 0:
+            source = remaining.pop()
+            conncomp = self.connected_component(source)
+            floorplan_nodes |= conncomp
+            remaining -= conncomp
+
+        return self.G.subgraph(floorplan_nodes)
+
+    def connected_component(self, source):
+
+        discovered = {source}
+        unexplored = list(self.G.neighbors(source))
         distance = [0 if u.free_ratio > 0 else 1 for u in unexplored]
 
         while len(unexplored) > 0:
@@ -53,5 +57,5 @@ class FloorPlanSpeculator(object):
                 else:
                     distance.append(d + 1)
 
-        return self.H.subgraph(discovered)
+        return discovered
 

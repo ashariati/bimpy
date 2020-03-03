@@ -549,7 +549,7 @@ class CellComplex2D(object):
             span = np.linalg.norm(t2 * n_hat - t1 * n_hat)
             coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat) * 0.5)
             if span > coverage_threshold or np.isclose(coverage_threshold, span):
-                interval = np.array([t1 * n_hat + self.vertices[e[0]], t2 * n_hat + self.vertices[e[0]]])
+                interval = [t1 * n_hat + self.vertices[e[0]], t2 * n_hat + self.vertices[e[0]]]
                 return interval
             else:
                 return None
@@ -604,14 +604,16 @@ class CellComplex2D(object):
                 for evidence in scene.evidence:
                     evidence.draw()
 
-            for u, v, data in scene_graph.edges.data():
+            for u, v in scene_graph.edges(keys=False):
                 u_center = np.mean(np.array(u.vertices), axis=0)
                 v_center = np.mean(np.array(v.vertices), axis=0)
                 centers = np.array([u_center, v_center])
                 plt.plot(centers[:, 0], centers[:, 1], 'ko-')
 
+            for u, v, data in scene_graph.edges(data=True, keys=False):
                 boundary_interval = data['boundary_interval']
                 if boundary_interval is not None:
+                    boundary_interval = np.array(boundary_interval)
                     plt.plot(boundary_interval[:, 0], boundary_interval[:, 1], 'ro-')
 
         plt.gca().set_aspect('equal', adjustable='box')
