@@ -339,8 +339,8 @@ class SceneNode2D(ConvexPolygon2D):
             self.evidence = evidence
             # TODO: should be union.area instead of max(area)
             # NOTE: This is way to slow
-            # self.free_ratio = max([p.area() for p in self.evidence]) / self.area()
-            self.free_ratio = len(self.evidence)
+            self.free_ratio = max([p.area() for p in self.evidence]) / self.area()
+            # self.free_ratio = len(self.evidence)
 
     def draw(self):
 
