@@ -12,10 +12,11 @@ def filter_boundary_edges(G):
 
         boundary = data['boundary_interval']
         if boundary is None:
-            H.add_edge(u, v, boundary_interval=None)
+            H.add_edge(u, v, **data)
         else:
-            H.add_edge(u, u, boundary_interval=boundary)
-            H.add_edge(v, v, boundary_interval=boundary)
+            data['shared_edge'] = None
+            H.add_edge(u, u, **data)
+            H.add_edge(v, v, **data)
 
     return H
 

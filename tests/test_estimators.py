@@ -46,7 +46,7 @@ class TestFloorPlan(unittest.TestCase):
                           ((2, 4), (1, 3)),
                           ((3, 1), (2, 0))]
 
-        evidence = []
+        evidence = [models.Point(np.array([-2, 3, 0]))]
         for ev in evidence_index:
             tr_corner = np.array([x_offsets[ev[0][0]], y_offsets[ev[0][1]]])
             bl_corner = np.array([x_offsets[ev[1][0]], y_offsets[ev[1][1]]])

@@ -45,11 +45,35 @@ class Plane(object):
         return np.linalg.solve(A, b)
 
 
+class Point(object):
+
+    def __init__(self, position):
+        assert isinstance(position, np.ndarray), "Expected type ndarray, got %s instead" % type(position)
+        assert position.size == 3, "position must be of length 3"
+
+        self.position = position
+
+    def partition(self, plane):
+        assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
+        side = np.sign(plane.dot(self.position))
+
+        if side > 0:
+            return self, None
+        else:
+            return None, self
+
+    def area(self):
+        return np.inf
+
+    def draw(self):
+        plt.plot(self.position[0], self.position[1], 'bo-')
+
+
 class Polygon3D(object):
 
     def __init__(self, vertices, edges, plane):
 
-        assert isinstance(vertices, np.ndarray), "Expected type ndarray, got %s instead" % type(plane)
+        assert isinstance(vertices, np.ndarray), "Expected type ndarray, got %s instead" % type(vertices)
         assert (len(vertices.shape) == 1 and vertices.shape[0] == 3) or \
                (len(vertices.shape) > 1 and vertices.shape[1] == 3), "vertices must be of size nx3"
         assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
@@ -197,8 +221,8 @@ class ConvexPolygon2D(object):
             pos_edges, neg_edges = _partition_edges(self.edges, side)
             pos_edges.add(e_div)
             neg_edges.add(e_div)
-            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)
-            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)[0]
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)[0]
 
             return cp_pos, cp_neg
 
@@ -216,8 +240,8 @@ class ConvexPolygon2D(object):
             neg_edges.add(e_div)
             self._edge_plane[e_div] = plane
 
-            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)
-            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)[0]
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)[0]
 
             return cp_pos, cp_neg
 
@@ -257,8 +281,8 @@ class ConvexPolygon2D(object):
             neg_edges.add(e_div)
             self._edge_plane[e_div] = plane
 
-            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)
-            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)
+            cp_pos = ConvexPolygon2D.fromsubset(pos_edges, self.vertices, self._edge_plane)[0]
+            cp_neg = ConvexPolygon2D.fromsubset(neg_edges, self.vertices, self._edge_plane)[0]
 
             return cp_pos, cp_neg
 
@@ -313,24 +337,23 @@ class ConvexPolygon2D(object):
     def fromsubset(edges, vertices, edge_plane=None):
 
         present_nodes = list(set(chain.from_iterable(edges)))
-        reindex = {i: k for k, i in enumerate(present_nodes)}
+        global_index_map = dict(enumerate(present_nodes))
+        local_index_map = {i: k for k, i in global_index_map.items()}
 
         sub_vertices = vertices[present_nodes, :]
-        sub_edges = {(reindex[i], reindex[j]) for i, j in edges}
+        sub_edges = {(local_index_map[i], local_index_map[j]) for i, j in edges}
 
         if edge_plane is not None:
-            sub_edge_plane = {(reindex[i], reindex[j]): edge_plane[(i, j)] for i, j in edges}
+            sub_edge_plane = {(local_index_map[i], local_index_map[j]): edge_plane[(i, j)] for i, j in edges}
         else:
             sub_edge_plane = {}
 
-        return ConvexPolygon2D(vertices=sub_vertices,
-                               edges=sub_edges,
-                               edge_plane=sub_edge_plane)
+        return ConvexPolygon2D(vertices=sub_vertices, edges=sub_edges, edge_plane=sub_edge_plane), global_index_map
 
 
 class SceneNode2D(ConvexPolygon2D):
 
-    def __init__(self, vertices, edges, evidence=None):
+    def __init__(self, vertices, edges, evidence=None, vertex_index_map=None):
         super(SceneNode2D, self).__init__(vertices, edges)
         if evidence is None or len(evidence) == 0:
             self.evidence = []
@@ -341,6 +364,7 @@ class SceneNode2D(ConvexPolygon2D):
             # NOTE: This is way to slow
             self.free_ratio = max([p.area() for p in self.evidence]) / self.area()
             # self.free_ratio = len(self.evidence)
+        self.vertex_index_map = vertex_index_map
 
     def draw(self):
 
@@ -366,8 +390,8 @@ class CellComplex2D(object):
             self.evidence = evidence
 
         def to_scene_node(self, cell_complex):
-            cp = ConvexPolygon2D.fromsubset(self.edges, cell_complex.vertices, cell_complex._edge_plane)
-            return SceneNode2D(vertices=cp.vertices, edges=cp.edges, evidence=self.evidence)
+            cp, index_map = ConvexPolygon2D.fromsubset(self.edges, cell_complex.vertices, cell_complex._edge_plane)
+            return SceneNode2D(vertices=cp.vertices, edges=cp.edges, evidence=self.evidence, vertex_index_map=index_map)
 
     def __init__(self, z_ref, width, length, evidence=None):
 
@@ -549,8 +573,8 @@ class CellComplex2D(object):
             span = np.linalg.norm(t2 * n_hat - t1 * n_hat)
             coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat) * 0.5)
             if span > coverage_threshold or np.isclose(coverage_threshold, span):
-                # interval = [t1 * n_hat + self.vertices[e[0]], t2 * n_hat + self.vertices[e[0]]]
-                interval = [self.vertices[e[0]], self.vertices[e[1]]]
+                interval = [t1 * n_hat + self.vertices[e[0]], t2 * n_hat + self.vertices[e[0]]]
+                # interval = [self.vertices[e[0]], self.vertices[e[1]]]
                 return interval
             else:
                 return None
@@ -574,7 +598,9 @@ class CellComplex2D(object):
             #   the neighboring cells are no longer considered free-adjacent
             c1, c2 = cells
             interval = edge_coverage(e, coverage_threshold)
-            G.add_edge(scene_nodes[c1], scene_nodes[c2], boundary_interval=interval)
+            G.add_edge(scene_nodes[c1], scene_nodes[c2],
+                       boundary_interval=interval,
+                       shared_edge=e)
 
         return G
 
@@ -600,8 +626,20 @@ class CellComplex2D(object):
 
         if scene_graph is not None:
 
+            shared_edges = set()
+            for u, v, data in scene_graph.edges(data=True, keys=False):
+                if data['shared_edge'] is None:
+                    continue
+                shared_edges.add(data['shared_edge'])
+
             for scene in scene_graph.nodes:
-                scene.draw()
+                # scene.draw()
+                for i, j in scene.edges:
+                    if (scene.vertex_index_map[i], scene.vertex_index_map[j]) in shared_edges:
+                        continue
+                    scene_bounds = np.array([scene.vertices[i], scene.vertices[j]])
+                    plt.plot(scene_bounds[:, 0], scene_bounds[:, 1], 'ro-')
+
                 for evidence in scene.evidence:
                     evidence.draw()
 
@@ -611,11 +649,11 @@ class CellComplex2D(object):
                 centers = np.array([u_center, v_center])
                 plt.plot(centers[:, 0], centers[:, 1], 'ko-')
 
-            for u, v, data in scene_graph.edges(data=True, keys=False):
-                boundary_interval = data['boundary_interval']
-                if boundary_interval is not None:
-                    boundary_interval = np.array(boundary_interval)
-                    plt.plot(boundary_interval[:, 0], boundary_interval[:, 1], 'ro-')
+            # for u, v, data in scene_graph.edges(data=True, keys=False):
+            #     boundary_interval = data['boundary_interval']
+            #     if boundary_interval is not None:
+            #         boundary_interval = np.array(boundary_interval)
+            #         plt.plot(boundary_interval[:, 0], boundary_interval[:, 1], 'ro-')
 
         plt.gca().set_aspect('equal', adjustable='box')
         plt.show()
