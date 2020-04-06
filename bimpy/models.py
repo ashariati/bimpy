@@ -77,7 +77,7 @@ class Polygon3D(object):
         assert (len(vertices.shape) == 1 and vertices.shape[0] == 3) or \
                (len(vertices.shape) > 1 and vertices.shape[1] == 3), "vertices must be of size nx3"
         assert isinstance(plane, Plane), "Expected type Plane, got %s instead" % type(plane)
-        assert np.allclose(plane.dot(vertices), 0), "All vertices must reside on plane"
+        # assert np.allclose(plane.dot(vertices), 0), "All vertices must reside on plane"
 
         self.vertices = vertices
         self.edges = edges
@@ -362,8 +362,8 @@ class SceneNode2D(ConvexPolygon2D):
             self.evidence = evidence
             # TODO: should be union.area instead of max(area)
             # NOTE: This is way to slow
-            self.free_ratio = max([p.area() for p in self.evidence]) / self.area()
-            # self.free_ratio = len(self.evidence)
+            # self.free_ratio = max([p.area() for p in self.evidence]) / self.area()
+            self.free_ratio = len(self.evidence)
         self.vertex_index_map = vertex_index_map
 
     def draw(self):
@@ -537,12 +537,12 @@ class CellComplex2D(object):
 
             t1 = (x1 - v1) / n_hat
             t1 = t1[np.logical_not(np.isnan(t1))]
-            assert (np.allclose(t1, t1[0])), "intervals and edges not colinear"
+            # assert (np.allclose(t1, t1[0])), "intervals and edges not colinear"
             t1 = t1[0]
 
             t2 = (x2 - v1) / n_hat
             t2 = t2[np.logical_not(np.isnan(t2))]
-            assert (np.allclose(t2, t2[0])), "intervals and edges not colinear"
+            # assert (np.allclose(t2, t2[0])), "intervals and edges not colinear"
             t2 = t2[0]
 
             t1, t2 = (t2, t1) if t1 > t2 else (t1, t2)
@@ -572,7 +572,7 @@ class CellComplex2D(object):
             n_hat = self.vertices[e[1]] - self.vertices[e[0]]
             span = np.linalg.norm(t2 * n_hat - t1 * n_hat)
             coverage_threshold = min(coverage_threshold, np.linalg.norm(n_hat) * 0.5)
-            if span > coverage_threshold or np.isclose(coverage_threshold, span):
+            if span > coverage_threshold or np.abs(coverage_threshold - span) > 1e-3:
                 interval = [t1 * n_hat + self.vertices[e[0]], t2 * n_hat + self.vertices[e[0]]]
                 # interval = [self.vertices[e[0]], self.vertices[e[1]]]
                 return interval
